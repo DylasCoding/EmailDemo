@@ -1,0 +1,47 @@
+# 🧠 Ignore toàn bộ node_modules (client + server)
+node_modules/
+*/node_modules/
+
+# ⚙️ Build output
+dist/
+build/
+*/build/
+
+# 🧩 Env files
+.env
+*/.env
+
+# 🧰 Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# 🧪 System files
+.DS_Store
+Thumbs.db
+
+# 🚀 IDE settings
+.vscode/
+.idea/
+
+# 🔧 Optional cache folders
+.cache/
+*.cache
+coverage/
+tmp/
+temp/
+
+# ⚠️ Nếu dùng React
+client/.eslintcache
+client/.parcel-cache
+client/.vite/
+
+# ⚠️ Nếu có test
+*.test.js
+*.spec.js
+
+# ⚠️ Nếu có backend uploads
+server/uploads/
