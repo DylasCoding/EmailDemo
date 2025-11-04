@@ -1,10 +1,12 @@
-// File: `client/src/components/MailDetail.js`
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { getMailById, getConversationMessages, sendMail } from "../api";
 import { useSocketContext } from "../contexts/SocketContext";
+import SendIcon from "@mui/icons-material/Send";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useNavigate } from "react-router-dom";
 
-/* decode JWT payload without external dependency */
 function decodeJwtPayload(token) {
     try {
         const parts = token.split(".");
@@ -24,14 +26,20 @@ function decodeJwtPayload(token) {
 
 function fmtTime(value) {
     if (!value) return "";
-    const d = typeof value === "number" ? new Date(value) : new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString();
+    const d = new Date(value);
+    const now = new Date();
+    const diff = now - d;
+
+    if (diff < 60000) return "Vừa xong";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)} phút trước`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)} giờ trước`;
+    return d.toLocaleDateString("vi-VN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function MailDetail({ token, mailId: propMailId }) {
     const { id: paramId } = useParams();
     const location = useLocation();
+    const navigate = useNavigate();
     const partnerEmailFromState = location.state?.partnerEmail;
     const partnerId = paramId || propMailId;
 
@@ -40,141 +48,82 @@ export default function MailDetail({ token, mailId: propMailId }) {
     const [input, setInput] = useState("");
     const [sending, setSending] = useState(false);
     const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
 
     const tokenPayload = token ? decodeJwtPayload(token) : null;
-
     const { subscribeNewMail } = useSocketContext();
 
-    function isMessageMine(m) {
-        if (!tokenPayload) {
-            return m.sentBy === "me";
-        }
+    const isMessageMine = (m) => {
+        if (!tokenPayload) return m.sentBy === "me";
+        const idCandidates = [tokenPayload.sub, tokenPayload.userId, tokenPayload.id, tokenPayload._id, tokenPayload.uid]
+            .filter(Boolean).map(String);
+        const myEmail = tokenPayload.email || tokenPayload.mail;
 
-        const idCandidates = [
-            tokenPayload.sub,
-            tokenPayload.userId,
-            tokenPayload.id,
-            tokenPayload._id,
-            tokenPayload.uid,
-        ]
-            .filter(Boolean)
-            .map(String);
-
-        const myEmail = tokenPayload.email || tokenPayload.mail || null;
-
-        if (idCandidates.length) {
-            if (m.senderId && idCandidates.includes(String(m.senderId))) return true;
-            if (m.fromId && idCandidates.includes(String(m.fromId))) return true;
-            if (m.userId && idCandidates.includes(String(m.userId))) return true;
-        }
-
-        if (myEmail) {
-            const fromVals = [m.from, m.fromEmail, m.senderEmail, m.fromAddress, m.email]
-                .filter(Boolean)
-                .map(String);
-            if (fromVals.includes(String(myEmail))) return true;
-        }
-
-        if (m.sentBy === "me") return true;
-        return false;
-    }
+        if (idCandidates.length && m.senderId && idCandidates.includes(String(m.senderId))) return true;
+        if (myEmail && [m.from, m.fromEmail, m.senderEmail].includes(myEmail)) return true;
+        return m.sentBy === "me";
+    };
 
     useEffect(() => {
-        if (!token) return;
+        if (!token || !partnerId) return;
         let mounted = true;
 
-        async function load() {
+        const load = async () => {
             try {
-                if (partnerId) {
-                    const conv = await getConversationMessages(token, partnerId);
-                    if (!mounted) return;
-                    const raw = Array.isArray(conv.data) ? conv.data : [];
-                    const mapped = raw.map((m) => ({ ...m, isMine: isMessageMine(m) }));
-                    setMessages(mapped);
-                    const first = raw[0];
-                    setMailMeta({
-                        subject: first?.subject || "",
-                        partnerId,
-                        partnerEmail: partnerEmailFromState || first?.from || first?.partnerEmail || null,
-                    });
-                } else if (propMailId) {
-                    const res = await getMailById(token, propMailId);
-                    if (!mounted) return;
-                    const m = res.data || {};
-                    const msgs = Array.isArray(m.messages) ? m.messages : [m];
-                    setMessages(msgs.map((msg) => ({ ...msg, isMine: isMessageMine(msg) })));
-                    setMailMeta({
-                        subject: m.subject || "",
-                        partnerId: m.partnerId,
-                        partnerEmail: m.partnerEmail || m.from || m.to || null,
-                    });
-                }
+                const conv = await getConversationMessages(token, partnerId);
+                if (!mounted) return;
+                const raw = Array.isArray(conv.data) ? conv.data : [];
+                const mapped = raw.map(m => ({ ...m, isMine: isMessageMine(m) }));
+                setMessages(mapped);
+                const first = raw[0];
+                setMailMeta({
+                    subject: first?.subject || "(Không có tiêu đề)",
+                    partnerId,
+                    partnerEmail: partnerEmailFromState || first?.from || first?.partnerEmail || "Không xác định"
+                });
             } catch (err) {
-                console.error(err);
+                console.error("Load conversation failed:", err);
             }
-        }
-
-        load();
-        return () => {
-            mounted = false;
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, partnerId, propMailId, partnerEmailFromState]);
+        load();
+        return () => { mounted = false; };
+    }, [token, partnerId, partnerEmailFromState]);
 
-    // Scroll on new messages
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    // Subscribe to newMail and append if it belongs to this conversation
     useEffect(() => {
         if (!token || !subscribeNewMail) return;
         const unsub = subscribeNewMail((msg) => {
-            const belongs =
-                (msg.partnerId && partnerId && String(msg.partnerId) === String(partnerId)) ||
-                (mailMeta?.partnerEmail &&
-                    (msg.from === mailMeta.partnerEmail ||
-                        msg.to === mailMeta.partnerEmail ||
-                        msg.fromEmail === mailMeta.partnerEmail ||
-                        msg.toEmail === mailMeta.partnerEmail));
-
+            const belongs = (msg.partnerId && String(msg.partnerId) === String(partnerId)) ||
+                (mailMeta?.partnerEmail && [msg.from, msg.to, msg.fromEmail, msg.toEmail].includes(mailMeta.partnerEmail));
             if (!belongs) return;
-
-            setMessages((prev) => {
-                if (msg.id && prev.some((m) => m.id === msg.id)) return prev;
-                return [...prev, { ...msg, isMine: isMessageMine(msg) }];
-            });
+            if (msg.id && messages.some(m => m.id === msg.id)) return;
+            setMessages(prev => [...prev, { ...msg, isMine: isMessageMine(msg) }]);
         });
-
         return unsub;
-    }, [token, subscribeNewMail, partnerId, mailMeta?.partnerEmail]);
+    }, [token, subscribeNewMail, partnerId, mailMeta?.partnerEmail, messages]);
 
     const handleSend = async (e) => {
         e.preventDefault();
-        if (!input.trim()) return;
-        if (!token) {
-            alert("Missing auth token");
-            return;
-        }
+        if (!input.trim() || sending) return;
         const to = mailMeta?.partnerEmail;
-        if (!to) {
-            alert("No recipient email available");
-            return;
-        }
+        if (!to) return alert("Không tìm thấy email người nhận");
 
-        const subject = mailMeta?.subject ? `Re: ${mailMeta.subject}` : "";
+        const subject = mailMeta?.subject?.startsWith("Re:") ? mailMeta.subject : `Re: ${mailMeta.subject}`;
         const body = input.trim();
 
-        const newMsg = { body, sentAt: new Date().toISOString(), sentBy: "me", subject, isMine: true };
-        // setMessages((prev) => [...prev, newMsg]);
+        const optimisticMsg = { body, sentAt: new Date().toISOString(), isMine: true, sending: true };
+        setMessages(prev => [...prev, optimisticMsg]);
         setInput("");
         setSending(true);
 
         try {
             await sendMail(token, { to, subject, body });
         } catch (err) {
-            console.error("sendMail failed", err);
-            alert("Send failed: " + (err.response?.data?.message || err.message));
+            setMessages(prev => prev.filter(m => !m.sending));
+            alert("Gửi thất bại: " + (err.response?.data?.message || err.message));
         } finally {
             setSending(false);
         }
@@ -183,54 +132,97 @@ export default function MailDetail({ token, mailId: propMailId }) {
     if (!mailMeta) return null;
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <div style={{ borderBottom: "1px solid #ddd", padding: "8px 12px" }}>
-                <h3 style={{ margin: 0 }}>{mailMeta.subject || "(no subject)"}</h3>
-                <div style={{ fontSize: 12, color: "#666" }}>{mailMeta.partnerEmail}</div>
-            </div>
-
-            <div
-                style={{
-                    flex: 1,
-                    overflowY: "auto",
-                    padding: "12px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    background: "#fafafa",
-                }}
-            >
-                {messages.length === 0 && <div style={{ color: "#666" }}>No messages</div>}
-                {messages.map((m, idx) => (
-                    <div
-                        key={m.id || m.sentAt || idx}
-                        style={{
-                            alignSelf: m.isMine ? "flex-end" : "flex-start",
-                            maxWidth: "80%",
-                            background: m.isMine ? "#d1e7dd" : "#fff",
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            boxShadow: "0 1px 0 rgba(0,0,0,0.06)",
-                        }}
-                    >
-                        <div style={{ whiteSpace: "pre-wrap", marginBottom: 6 }}>{m.body}</div>
-                        <div style={{ fontSize: 11, color: "#666", textAlign: "right" }}>{fmtTime(m.sentAt)}</div>
+        <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
+            {/* Header - Glassmorphism */}
+            <header className="bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-sm">
+                <div className="flex items-center justify-between px-6 py-4">
+                    <div className="flex items-center space-x-4">
+                        <button
+                            onClick={() => navigate(-1)}
+                            className="p-2 rounded-xl hover:bg-gray-100 transition-colors"
+                        >
+                            <ArrowBackIcon className="text-gray-600" />
+                        </button>
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800 truncate max-w-xs">
+                                {mailMeta.subject}
+                            </h2>
+                            <p className="text-sm text-gray-500 flex items-center space-x-1">
+                                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                <span>{mailMeta.partnerEmail}</span>
+                            </p>
+                        </div>
                     </div>
-                ))}
+                </div>
+            </header>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4" style={{ scrollbarWidth: "thin" }}>
+                {messages.length === 0 ? (
+                    <div className="text-center text-gray-500 py-12">
+                        <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <SendIcon className="text-blue-500 text-3xl" />
+                        </div>
+                        <p>Chưa có tin nhắn</p>
+                        <p className="text-sm">Hãy bắt đầu cuộc trò chuyện!</p>
+                    </div>
+                ) : (
+                    messages.map((m, idx) => (
+                        <div
+                            key={m.id || m.sentAt || idx}
+                            className={`flex ${m.isMine ? "justify-end" : "justify-start"}`}
+                        >
+                            <div
+                                className={`
+                                    max-w-xs md:max-w-md px-4 py-3 rounded-2xl shadow-sm
+                                    ${m.isMine
+                                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
+                                    : "bg-white/90 backdrop-blur-sm border border-gray-200 text-gray-800"
+                                }
+                                    ${m.sending ? "opacity-70" : ""}
+                                `}
+                            >
+                                <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.body}</p>
+                                <p className={`text-xs mt-1 ${m.isMine ? "text-blue-100" : "text-gray-400"} text-right`}>
+                                    {m.sending ? "Đang gửi..." : fmtTime(m.sentAt)}
+                                </p>
+                            </div>
+                        </div>
+                    ))
+                )}
                 <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSend} style={{ borderTop: "1px solid #ddd", padding: 8, display: "flex", gap: 8 }}>
-        <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message..."
-            rows={2}
-            style={{ flex: 1, resize: "none", padding: 8, borderRadius: 6, border: "1px solid #ccc" }}
-        />
-                <button type="submit" disabled={sending || input.trim() === ""} style={{ minWidth: 90 }}>
-                    {sending ? "Sending..." : "Send"}
-                </button>
+            {/* Input Area */}
+            <form onSubmit={handleSend} className="bg-white/80 backdrop-blur-xl border-t border-white/20 p-4">
+                <div className="flex items-end space-x-3 max-w-4xl mx-auto">
+                    <button type="button" className="p-2 text-gray-500 hover:text-blue-600 transition-colors">
+                        <AttachFileIcon />
+                    </button>
+                    <textarea
+                        ref={inputRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend(e)}
+                        placeholder="Soạn tin nhắn..."
+                        rows={1}
+                        className="flex-1 resize-none bg-gray-50/70 border border-gray-200 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 placeholder-gray-400 text-gray-800"
+                        style={{ minHeight: "48px", maxHeight: "120px" }}
+                    />
+                    <button
+                        type="submit"
+                        disabled={sending || !input.trim()}
+                        className={`
+                            p-3 rounded-full shadow-lg transition-all duration-300
+                            ${sending || !input.trim()
+                            ? "bg-gray-300 cursor-not-allowed"
+                            : "bg-gradient-to-r from-blue-500 to-indigo-600 hover:shadow-xl hover:scale-110 active:scale-100 text-white"
+                        }
+                        `}
+                    >
+                        <SendIcon fontSize="small" />
+                    </button>
+                </div>
             </form>
         </div>
     );
