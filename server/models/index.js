@@ -16,9 +16,13 @@ import configFile from '../config/config.json' with { type: 'json' };
 const config = configFile[env];
 const db = {};
 
+// Control logging via environment variable (default: off)
+config.logging = process.env.SEQ_LOG === 'true' ? console.log : false;
+
 let sequelize;
 if (config.use_env_variable) {
-    sequelize = new Sequelize(process.env[config.use_env_variable], config);
+    sequelize = new Sequelize(process.env[config.use_env_variable],
+        config);
 } else {
     sequelize = new Sequelize(config.database, config.username, config.password, config);
 }

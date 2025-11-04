@@ -18,7 +18,7 @@ export async function login(req, res) {
         const result = await loginUser(email, password);
         if (!result) return res.status(401).json({ success: false, error: 'Invalid credentials' });
         res.json({ success: true, token: result.token });
-        console.log(result);
+        // console.log(result);
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

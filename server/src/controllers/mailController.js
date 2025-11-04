@@ -6,7 +6,7 @@ import { encrypt as encryptFn } from '../utils/crypto.js';
 export async function sendMail(req, res) {
     try {
         const bodyObj = req.body || {};
-        console.log('sendMail req.body:', bodyObj);
+        // console.log('sendMail req.body:', bodyObj);
 
         // allow sender from body or authenticated user
         const from = bodyObj.from || req.user?.email;
@@ -50,7 +50,7 @@ export async function inbox(req, res) {
         }
         const email = req.user.email;
         const list = await getInbox(email, { raw: true });
-        console.log('inbox list:', list);
+        // console.log('inbox list:', list);
         return res.json(list);
     } catch (err) {
         console.error('inbox error', err);
@@ -83,15 +83,12 @@ export async function getMail(req, res) {
 
 export async function conversations(req, res) {
     try {
-        console.log("1");
         if (!req.user || !req.user.email) {
             return res.status(401).json({ error: 'Unauthorized: missing user' });
         }
-        console.log("2");
         const email = req.user.email;
-        console.log("3");
         const convos = await getConversations(email);
-        console.log('conversations result:', convos);
+        // console.log('conversations result:', convos);
         return res.json(convos);
     } catch (err) {
         console.error('conversations error', err);

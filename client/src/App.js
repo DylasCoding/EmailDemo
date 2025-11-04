@@ -1,3 +1,4 @@
+// javascript
 // File: client/src/App.js
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-router-dom";
@@ -9,6 +10,9 @@ import Inbox from "./components/Inbox";
 import SendMail from "./components/SendMail";
 import MailDetail from "./components/MailDetail";
 import ProtectedRoute from "./routes/ProtectedRoute";
+
+import { initSocket, disconnectSocket } from "./socket";
+import { SocketProvider } from "./contexts/SocketContext";
 
 export default function App() {
     const [token, setToken] = useState("");
@@ -27,6 +31,7 @@ export default function App() {
         }
     }, []);
 
+    // initialize / re-init socket when token changes
     useEffect(() => {
         if (token) {
             localStorage.setItem("jwt", token);
@@ -36,19 +41,30 @@ export default function App() {
             } catch (e) {
                 console.error("Invalid token:", e);
             }
+            // initialize socket with token so server can auth
+            initSocket(token);
+            console.log("Socket initialized:");
+            console.log(token);
+        } else {
+            // no token: ensure socket disconnected
+            disconnectSocket();
+            setUser(null);
+            localStorage.removeItem("jwt");
         }
     }, [token]);
 
     const handleLogout = () => {
-        localStorage.removeItem("jwt");
+        // disconnect socket when logging out
+        disconnectSocket();
         setToken("");
         setUser(null);
     };
 
     return (
         <Router>
-            <nav style={{ display: "flex", gap: "1rem", marginBottom: "1rem", alignItems: "center" }}>
-                {user && <span>Welcome, {user.firstName || user.email}</span>}
+            <SocketProvider token={token} userEmail={user?.email}>
+                <nav style={{ display: "flex", gap: "1rem", marginBottom: "1rem", alignItems: "center" }}>
+                    {user && <span>Welcome, {user.firstName || user.email}</span>}
                 {!token && (
                     <>
                         <Link to="/register">Register</Link>
@@ -94,6 +110,7 @@ export default function App() {
                     }
                 />
             </Routes>
+            </SocketProvider>
         </Router>
     );
 }

@@ -1,6 +1,6 @@
 // src/services/mailService.js
 import { User, EmailMessage, sequelizeInstance as sequelize } from '../../models/index.js';
-import { encrypt as encryptFn } from '../utils/crypto.js';
+import { encrypt as encryptFn, decrypt } from '../utils/crypto.js';
 import {Op} from "sequelize";
 
 /**
@@ -56,6 +56,30 @@ export async function saveEmail(senderIdentifier, recipientIdentifier, subject, 
         }
 
         await t.commit();
+
+        // 🔥 Emit realtime event nếu recipient đang online
+        if (global._io && recipient.email) {
+            const payload = {
+                id: Date.now(), // tạm id giả, hoặc lấy id thực sau khi lưu
+                senderId: sender.id,
+                recipientId: recipient.id,
+                fromEmail: sender.email,
+                toEmail: recipient.email,
+                subject,
+                body,
+                sentAt: new Date(),
+            };
+            console.log(JSON.stringify(payload));
+            const recipientEmailPlain = decrypt(recipient.getDataValue('email'));
+            const senderEmailPlain = decrypt(sender.getDataValue('email'));
+
+            payload.fromEmail = senderEmailPlain;
+            payload.toEmail = recipientEmailPlain;
+
+            global._io.to(recipientEmailPlain).emit('newMail', payload);
+            global._io.to(senderEmailPlain).emit('newMail', payload); // optional: để người gửi cũng update realtime
+        }
+
         return true;
     } catch (err) {
         // rollback only if transaction not already finished
