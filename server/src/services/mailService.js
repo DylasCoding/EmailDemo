@@ -1,236 +1,341 @@
 // src/services/mailService.js
-import { User, EmailMessage, sequelizeInstance as sequelize } from '../../models/index.js';
+import { User, MailThread, MailMessage,MailThreadStatus, sequelizeInstance as sequelize } from '../../models/index.js';
 import { encrypt as encryptFn, decrypt } from '../utils/crypto.js';
-import {Op} from "sequelize";
-
-/**
- * saveEmail(senderEmail, recipientEmail, subject, body, { encrypted })
- * - nếu encrypted === true => subject/body đã mã hóa trên client, lưu trực tiếp bằng setDataValue
- * - nếu encrypted === false => subject/body plaintext, model sẽ mã hóa qua setter mặc định
- */
+import { Op } from "sequelize";
 
 function isValidId(v) {
     return typeof v === 'number' && Number.isInteger(v) || (typeof v === 'string' && /^\d+$/.test(v));
 }
 
-export async function saveEmail(senderIdentifier, recipientIdentifier, subject, body, options = { encrypted: false }) {
+// 📨 1. Soạn thư mới (tạo thread + message)
+export async function createNewThreadAndMessage(senderEmail, receiverEmail, subject, body) {
     const t = await sequelize.transaction();
     try {
-        // resolve sender
-        let sender;
-        if (isValidId(senderIdentifier)) {
-            sender = await User.findByPk(parseInt(senderIdentifier, 10), { transaction: t });
-        } else {
-            sender = await User.findOne({ where: { email: encryptFn(String(senderIdentifier)) }, transaction: t });
-        }
+        const sender = await User.findOne({ where: { email: encryptFn(senderEmail) }, transaction: t });
+        const receiver = await User.findOne({ where: { email: encryptFn(receiverEmail) }, transaction: t });
+        if (!sender || !receiver) throw new Error('Sender or receiver not found');
 
-        // resolve recipient
-        let recipient;
-        if (isValidId(recipientIdentifier)) {
-            recipient = await User.findByPk(parseInt(recipientIdentifier, 10), { transaction: t });
-        } else {
-            recipient = await User.findOne({ where: { email: encryptFn(String(recipientIdentifier)) }, transaction: t });
-        }
+        // Tạo thread mới
+        const thread = await MailThread.create({
+            title: subject || '(no subject)',
+            class: 'normal',
+            senderId: sender.id,
+            receiverId: receiver.id,
+        }, { transaction: t });
 
-        if (!sender || !recipient) {
-            // throw and let outer catch handle the rollback once
-            throw new Error('Sender or recipient not found');
-        }
-
-        if (options.encrypted) {
-            const msg = EmailMessage.build({
-                senderId: sender.id,
-                recipientId: recipient.id,
-                sentAt: new Date()
-            });
-            msg.setDataValue('subject', subject); // already encrypted
-            msg.setDataValue('body', body);       // already encrypted
-            await msg.save({ hooks: false, validate: false, transaction: t });
-        } else {
-            await EmailMessage.create({
-                senderId: sender.id,
-                recipientId: recipient.id,
-                subject,
-                body
-            }, { transaction: t });
-        }
+        // Tạo message đầu tiên
+        const message = await MailMessage.create({
+            threadId: thread.id,
+            senderId: sender.id,
+            body,
+        }, { transaction: t });
 
         await t.commit();
 
-        // 🔥 Emit realtime event nếu recipient đang online
-        if (global._io && recipient.email) {
+// 🔔 Realtime cho người gửi và người nhận
+        if (global._io && receiver.email) {
+            const senderEmail = decrypt(sender.getDataValue('email'));
+            const receiverEmail = decrypt(receiver.getDataValue('email'));
+
             const payload = {
-                id: Date.now(), // tạm id giả, hoặc lấy id thực sau khi lưu
+                threadId: thread.id,               // 🔑 Đảm bảo có ID để mở cuộc hội thoại
+                id: thread.id,
+                title: thread.title || '(Không có tiêu đề)',  // 🧠 Hiển thị ở Inbox
+                class: thread.class || 'normal',
+                lastMessage: body,                 // 📨 Hiển thị nội dung cuối cùng
+                lastSentAt: message.sentAt,        // ⏰ Hiển thị thời gian ở Inbox
                 senderId: sender.id,
-                recipientId: recipient.id,
-                fromEmail: sender.email,
-                toEmail: recipient.email,
-                subject,
-                body,
-                sentAt: new Date(),
+                receiverId: receiver.id,
+                senderEmail,
+                receiverEmail,
+                partnerEmail: receiverEmail,       // 👈 Thêm để Inbox hiển thị đúng
             };
-            console.log(JSON.stringify(payload));
-            const recipientEmailPlain = decrypt(recipient.getDataValue('email'));
-            const senderEmailPlain = decrypt(sender.getDataValue('email'));
 
-            payload.fromEmail = senderEmailPlain;
-            payload.toEmail = recipientEmailPlain;
-
-            global._io.to(recipientEmailPlain).emit('newMail', payload);
-            global._io.to(senderEmailPlain).emit('newMail', payload); // optional: để người gửi cũng update realtime
+            // Gửi realtime đến cả 2 người
+            global._io.to(receiverEmail).emit('newThread', payload);
+            global._io.to(senderEmail).emit('newThread', payload);
         }
 
-        return true;
+        return { thread, message };
     } catch (err) {
-        // rollback only if transaction not already finished
-        try {
-            if (t && !t.finished) {
-                await t.rollback();
-            }
-        } catch (rbErr) {
-            console.error('Transaction rollback failed:', rbErr);
-        }
+        await t.rollback();
         throw err;
     }
 }
 
-/**
- * getInbox(email, { raw = true })
- * - Trả về list messages cho recipient.
- * - IMPORTANT: model getters hiện tại trả về decrypted strings (get subject(), get body()).
- * - Nếu bạn muốn trả về **encrypted** values (để client tự giải mã), set raw = true.
- */
-export async function getInbox(email, options = { raw: false }) {
+/// 💬 2. Gửi trong hội thoại đã có
+export async function sendMessageInThread(senderEmail, threadId, body) {
+    const t = await sequelize.transaction();
+    try {
+        const sender = await User.findOne({
+            where: { email: encryptFn(senderEmail) },
+            transaction: t
+        });
+
+        // ✅ Ép threadId về dạng số
+        const realThreadId =
+            typeof threadId === 'object'
+                ? threadId.id || threadId.threadId
+                : threadId;
+
+        if (!realThreadId || isNaN(realThreadId)) {
+            console.log('❌ Invalid threadId, raw value:', threadId);
+            throw new Error('Invalid threadId');
+        }
+
+
+        const thread = await MailThread.findByPk(Number(realThreadId), { transaction: t });
+        if (!sender || !thread) throw new Error('Invalid sender or thread');
+
+        const message = await MailMessage.create({
+            threadId: thread.id,
+            senderId: sender.id,
+            body,
+        }, { transaction: t });
+
+        await thread.update({ updatedAt: new Date() }, { transaction: t });
+        await t.commit();
+
+        // 🔔 Realtime cho người gửi và người nhận
+        const receiverId = thread.senderId === sender.id ? thread.receiverId : thread.senderId;
+        const receiver = await User.findByPk(receiverId);
+
+        if (global._io && receiver?.email) {
+            const payload = {
+                id: message.id,
+                threadId: thread.id,
+                senderId: sender.id,
+                receiverId,
+                fromEmail: decrypt(sender.getDataValue('email')),
+                toEmail: decrypt(receiver.getDataValue('email')),
+                body,
+                sentAt: message.sentAt,
+            };
+
+            global._io.to(payload.toEmail).emit('newMail', payload);
+            global._io.to(payload.fromEmail).emit('newMail', payload);
+        }
+
+        return message;
+    } catch (err) {
+        await t.rollback();
+        throw err;
+    }
+}
+
+
+
+// 🧭 Hộp thư đến (Inbox)
+export async function getInbox(email) {
     const user = await User.findOne({ where: { email: encryptFn(email) } });
     if (!user) return [];
 
-    const messages = await EmailMessage.findAll({
-        where: { recipientId: user.id },
-        order: [['sentAt', 'DESC']]
+    const threads = await MailThread.findAll({
+        where: { receiverId: user.id },
+        include: [{ model: User, as: 'sender' }],
+        order: [['updatedAt', 'DESC']]
     });
 
-    if (options.raw) {
-        // trả về giá trị nguyên (đã mã hóa) bằng getDataValue
-        return messages.map(m => ({
-            id: m.id,
-            subject_encrypted: m.getDataValue('subject'),
-            body_encrypted: m.getDataValue('body'),
-            recipientId: m.recipientId,
-            senderId: m.senderId,
-            sentAt: m.sentAt
-        }));
-    }
-
-    // mặc định: trả về decrypted (theo getter trong model)
-    return messages.map(m => ({
-        id: m.id,
-        subject: m.subject,
-        body: m.body,
-        recipientId: m.recipientId,
-        senderId: m.senderId,
-        sentAt: m.sentAt
+    return threads.map(t => ({
+        id: t.id,
+        title: t.title,
+        classType: t.classType,
+        senderEmail: t.sender ? t.sender.email : null,
+        updatedAt: t.updatedAt
     }));
 }
 
-/**
- * getMessageById(email, id, { raw = true })
- */
-export async function getMessageById(email, id, options = { raw: false }) {
+// 📬 Lấy chi tiết 1 thread theo ID (bao gồm danh sách tin nhắn)
+export async function getMailById(email, threadId) {
     const user = await User.findOne({ where: { email: encryptFn(email) } });
-    if (!user) return null;
-    const msg = await EmailMessage.findOne({ where: { id, recipientId: user.id } });
-    if (!msg) return null;
-    if (options.raw) {
-        return {
-            id: msg.id,
-            subject_encrypted: msg.getDataValue('subject'),
-            body_encrypted: msg.getDataValue('body'),
-            senderId: msg.senderId,
-            sentAt: msg.sentAt
-        };
-    }
-    return {
-        id: msg.id,
-        subject: msg.subject,
-        body: msg.body,
-        senderId: msg.senderId,
-        sentAt: msg.sentAt
-    };
+    if (!user) throw new Error('User not found');
 
+    // 🔍 Kiểm tra xem user có nằm trong thread này không
+    const thread = await MailThread.findOne({
+        where: {
+            id: threadId,
+            [Op.or]: [
+                { senderId: user.id },
+                { receiverId: user.id },
+            ],
+        },
+        include: [
+            { model: User, as: 'sender' },
+            { model: User, as: 'receiver' },
+            {
+                model: MailMessage,
+                as: 'messages',
+                order: [['sentAt', 'ASC']],
+            },
+        ],
+    });
+
+    if (!thread) throw new Error('Thread not found or access denied');
+
+    return {
+        id: thread.id,
+        title: thread.title,
+        class: thread.class,
+        sender: thread.sender ? decrypt(thread.sender.email) : null,
+        receiver: thread.receiver ? decrypt(thread.receiver.email) : null,
+        messages: thread.messages.map((m) => ({
+            id: m.id,
+            body: m.body,
+            senderId: m.senderId,
+            sentAt: m.sentAt,
+        })),
+    };
 }
 
-// 🔹 Lấy danh sách hội thoại (2 chiều)
+// 🧾 Danh sách hội thoại
 export async function getConversations(email) {
     const user = await User.findOne({ where: { email: encryptFn(email) } });
     if (!user) return [];
-    console.log("getConversations for user:", user.id);
 
-    const messages = await EmailMessage.findAll({
+    // Include statuses for the current user (if any) and pick class from there first
+    const threads = await MailThread.findAll({
         where: {
-            [Op.or]: [{ senderId: user.id }, { recipientId: user.id }],
+            [Op.or]: [{ senderId: user.id }, { receiverId: user.id }]
         },
-        order: [['sentAt', 'DESC']],
+        include: [
+            {
+                model: MailMessage,
+                as: 'messages',
+                limit: 1,
+                separate: true,
+                order: [['sentAt', 'DESC']]
+            },
+            { model: User, as: 'sender' },
+            { model: User, as: 'receiver' },
+            {
+                model: MailThreadStatus,
+                as: 'statuses',
+                where: { userId: user.id },
+                required: false
+            }
+        ],
+        order: [['updatedAt', 'DESC']]
     });
 
-    // group by partnerId and keep most recent message per partner
-    const convoMap = new Map();
-    for (const msg of messages) {
-        const partnerId = msg.senderId === user.id ? msg.recipientId : msg.senderId;
-        if (!convoMap.has(partnerId)) {
-            convoMap.set(partnerId, {
-                partnerId,
-                lastMessage: msg.body,      // getter -> decrypted
-                lastSentAt: msg.sentAt,
-            });
-        }
-    }
+    return threads.map(t => {
+        const partner = (t.senderId === user.id) ? t.receiver : t.sender;
+        const lastMsg = t.messages?.[0];
 
-    // batch load partner users
-    const partnerIds = Array.from(convoMap.keys());
-    let partners = [];
-    if (partnerIds.length) {
-        partners = await User.findAll({
-            where: { id: partnerIds },
-        });
-    }
-    const partnerById = new Map(partners.map(p => [p.id, p]));
+        // Prefer per-user status, then thread-level class, then fallback to 'normal'
+        const effectiveClass = t.statuses?.[0]?.class || t.class || 'normal';
 
-    // build convo list and sort by lastSentAt desc
-    const convos = partnerIds.map(pid => {
-        const convo = convoMap.get(pid);
-        const partner = partnerById.get(pid);
         return {
-            partnerId: pid,
-            partnerEmail: partner ? partner.email : 'Unknown', // getter -> decrypted
-            lastMessage: convo.lastMessage,
-            lastSentAt: convo.lastSentAt,
+            threadId: t.id,
+            title: t.title || '(No subject)',
+            class: effectiveClass,
+            partnerId: partner?.id ?? null,
+            partnerEmail: partner ? decrypt(partner.email) : null,
+            lastMessage: lastMsg ? lastMsg.body : '',
+            lastSentAt: lastMsg ? lastMsg.sentAt : t.updatedAt
         };
-    }).sort((a, b) => b.lastSentAt - a.lastSentAt);
-
-    return convos;
+    });
 }
 
-// 🔹 Lấy chi tiết hội thoại giữa 2 người
-export async function getConversationMessages(email, partnerId) {
+// 💬 Chi tiết hội thoại
+export async function getConversationMessagesByThread(email, threadId) {
     const user = await User.findOne({ where: { email: encryptFn(email) } });
     if (!user) return [];
 
-    const messages = await EmailMessage.findAll({
-        where: {
-            [Op.or]: [
-                { senderId: user.id, recipientId: partnerId },
-                { senderId: partnerId, recipientId: user.id },
-            ],
-        },
-        order: [['sentAt', 'ASC']],
+    const thread = await MailThread.findOne({
+        where: { id: threadId, [Op.or]: [{ senderId: user.id }, { receiverId: user.id }] },
+        include: [{ model: MailMessage, as: 'messages', order: [['sentAt', 'ASC']] }]
     });
 
-    return messages.map((m) => ({
+    if (!thread) return [];
+
+    return thread.messages.map(m => ({
         id: m.id,
-        senderId: m.senderId,
-        recipientId: m.recipientId,
-        subject: m.subject,
         body: m.body,
+        senderId: m.senderId,
         sentAt: m.sentAt,
     }));
+}
+
+export async function updateThreadClass(threadId, newClass) {
+    if (!threadId || !["normal", "star", "spam"].includes(newClass))
+        throw new Error("Invalid threadId or class value");
+
+    const thread = await MailThread.findByPk(threadId);
+    if (!thread) throw new Error("Thread not found");
+
+    // Keep this as a global thread-level class change only (do NOT create per-user statuses here)
+    thread.class = newClass;
+    await thread.save();
+
+    if (global._io) {
+        global._io.emit("updateThreadClass", { threadId, newClass });
+    }
+
+    return thread;
+}
+
+export async function updateUserThreadStatus(threadId, userId, newClass) {
+    if (!threadId || !userId || !["normal", "star", "spam"].includes(newClass))
+        throw new Error("Invalid parameters");
+
+    const thread = await MailThread.findByPk(threadId);
+    if (!thread) throw new Error("Thread not found");
+
+    const [status, created] = await MailThreadStatus.findOrCreate({
+        where: { threadId, userId },
+        defaults: { class: newClass }
+    });
+
+    if (!created) {
+        // overwrite existing per-user status
+        status.class = newClass;
+        await status.save();
+    }
+    return status;
+}
+
+// 📨 Lấy danh sách hội thoại của user kèm class cá nhân
+export async function getUserThreadStatuses(userEmail) {
+    const user = await User.findOne({ where: { email: encryptFn(userEmail) } });
+    if (!user) throw new Error('User not found');
+
+    const threads = await MailThread.findAll({
+        include: [
+            {
+                model: MailThreadStatus,
+                as: 'statuses',
+                where: { userId: user.id },
+                required: false
+            }
+        ],
+        order: [['updatedAt', 'DESC']]
+    });
+
+    // Giải mã dữ liệu
+    return threads.map(thread => ({
+        id: thread.id,
+        subject: thread.title ? decrypt(thread.title) : '(Không tiêu đề)',
+        senderId: thread.senderId,
+        receiverId: thread.receiverId,
+        updatedAt: thread.updatedAt,
+        class: thread.statuses?.[0]?.class || 'normal'
+    }));
+}
+
+
+// ⭐ Cập nhật class cá nhân cho user
+export async function setUserThreadStatus(userEmail, threadId, newClass) {
+    if (!threadId || !['normal', 'star', 'spam'].includes(newClass))
+        throw new Error('Invalid threadId or class');
+
+    const user = await User.findOne({ where: { email: encryptFn(userEmail) } });
+    if (!user) throw new Error('User not found');
+
+    await MailThreadStatus.upsert({
+        userId: user.id,
+        threadId,
+        class: newClass
+    });
+
+    return { threadId, class: newClass };
 }

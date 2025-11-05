@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { getMailById, getConversationMessages, sendMail } from "../api";
+import { getMailById, getThreadMessages, sendMail, sendMessageInThread } from "../api";
 import { useSocketContext } from "../contexts/SocketContext";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useNavigate } from "react-router-dom";
 
+
 function decodeJwtPayload(token) {
+
     try {
         const parts = token.split(".");
         if (parts.length < 2) return null;
@@ -43,7 +45,7 @@ export default function MailDetail({ token, mailId: propMailId }) {
     const partnerEmailFromState = location.state?.partnerEmail;
     const partnerId = paramId || propMailId;
 
-    const [mailMeta, setMailMeta] = useState(null);
+    const [setMailMeta] = useState(null);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
     const [sending, setSending] = useState(false);
@@ -52,6 +54,12 @@ export default function MailDetail({ token, mailId: propMailId }) {
 
     const tokenPayload = token ? decodeJwtPayload(token) : null;
     const { subscribeNewMail } = useSocketContext();
+
+    const { id: threadIdParam } = useParams(); // ✅ Lấy "6" từ URL (/mail/thread/6)
+    const mailMeta = location.state || {};
+    const threadId = mailMeta.threadId || threadIdParam; // Ưu tiên state, fallback param
+
+    console.log("🧭 Thread ID from URL:", threadId);
 
     const isMessageMine = (m) => {
         if (!tokenPayload) return m.sentBy === "me";
@@ -70,7 +78,8 @@ export default function MailDetail({ token, mailId: propMailId }) {
 
         const load = async () => {
             try {
-                const conv = await getConversationMessages(token, partnerId);
+                const conv = await getThreadMessages(token, partnerId);
+
                 if (!mounted) return;
                 const raw = Array.isArray(conv.data) ? conv.data : [];
                 const mapped = raw.map(m => ({ ...m, isMine: isMessageMine(m) }));
@@ -115,12 +124,15 @@ export default function MailDetail({ token, mailId: propMailId }) {
         const body = input.trim();
 
         const optimisticMsg = { body, sentAt: new Date().toISOString(), isMine: true, sending: true };
-        setMessages(prev => [...prev, optimisticMsg]);
+        // setMessages(prev => [...prev, optimisticMsg]);
         setInput("");
         setSending(true);
 
         try {
-            await sendMail(token, { to, subject, body });
+            console.log("1");
+            console.log(mailMeta.threadId);
+            await sendMessageInThread(token, threadId, { body });
+
         } catch (err) {
             setMessages(prev => prev.filter(m => !m.sending));
             alert("Gửi thất bại: " + (err.response?.data?.message || err.message));

@@ -53,6 +53,47 @@ export const login = (data) => api.post("/auth/login", data);
 export const sendMail = (token, data) =>
     api.post("/mail/send", data, { headers: authHeaders(token) });
 
+export const sendMessageInThread = (token, threadId, data) =>
+    api.post(`/mail/thread/${threadId}/send`, data, { headers: authHeaders(token) });
+
+
+export const sendReply = (token, data) =>
+    api.post("/mail/reply", data, { headers: authHeaders(token) });
+
+export const getThreadStatuses = async (token) => {
+    const res = await api.get("/mail/thread-status", { headers: authHeaders(token) });
+    return res.data;
+};
+
+export const updateThreadStatus = async (token, threadId, newClass) => {
+    if (!token) throw new Error('Missing auth token');
+    const res = await api.put(
+        `/mail/thread-status/${threadId}`,
+        { newClass },
+        { headers: authHeaders(token) }
+    );
+    return res.data;
+};
+
+
+export const getThreadMessages = async (token, threadId) => {
+    const res = await api.get(`/mail/thread/${threadId}`, { headers: authHeaders(token) });
+
+    const messages = await Promise.all(
+        (res.data || []).map(async (m) => ({
+            id: m.id,
+            threadId: m.threadId,
+            senderId: m.senderId,
+            senderEmail: typeof m.senderEmail === "string" ? await tryDecryptValue(m.senderEmail) : m.senderEmail,
+            body: typeof m.body === "string" ? await tryDecryptValue(m.body) : m.body,
+            subject: typeof m.subject === "string" ? await tryDecryptValue(m.subject) : m.subject,
+            sentAt: await tryDecryptDate(m.sentAt),
+        }))
+    );
+
+    return { ...res, data: messages };
+};
+
 export const getInbox = async (token) => {
     const res = await api.get("/mail/inbox", { headers: authHeaders(token) });
     const decoded = await Promise.all(
@@ -83,14 +124,18 @@ export const getConversations = async (token) => {
     const res = await api.get("/mail/conversations", { headers: authHeaders(token) });
     const convos = await Promise.all(
         (res.data || []).map(async (c) => ({
+            threadId: c.threadId, // ✅ quan trọng
             partnerId: c.partnerId,
             partnerEmail: typeof c.partnerEmail === "string" ? await tryDecryptValue(c.partnerEmail) : c.partnerEmail,
+            title: c.title,
+            class: c.class,
             lastMessage: typeof c.lastMessage === "string" ? await tryDecryptValue(c.lastMessage) : c.lastMessage,
             lastSentAt: await tryDecryptDate(c.lastSentAt),
         }))
     );
     return { ...res, data: convos };
 };
+
 
 export const getConversationMessages = async (token, partnerId) => {
     const res = await api.get(`/mail/conversations/${partnerId}`, { headers: authHeaders(token) });
@@ -104,3 +149,4 @@ export const getConversationMessages = async (token, partnerId) => {
     );
     return { ...res, data: msgs };
 };
+

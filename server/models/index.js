@@ -1,5 +1,3 @@
-// javascript
-// server/models/index.js
 'use strict';
 
 import fs from 'fs';
@@ -16,24 +14,20 @@ import configFile from '../config/config.json' with { type: 'json' };
 const config = configFile[env];
 const db = {};
 
-// Control logging via environment variable (default: off)
+// Control logging via environment variable
 config.logging = process.env.SEQ_LOG === 'true' ? console.log : false;
 
 let sequelize;
 if (config.use_env_variable) {
-    sequelize = new Sequelize(process.env[config.use_env_variable],
-        config);
+    sequelize = new Sequelize(process.env[config.use_env_variable], config);
 } else {
     sequelize = new Sequelize(config.database, config.username, config.password, config);
 }
 
 const files = fs
     .readdirSync(__dirname)
-    .filter((file) => {
-        return file.indexOf('.') !== 0 && file !== basename && file.slice(-3) === '.js';
-    });
+    .filter((file) => file.indexOf('.') !== 0 && file !== basename && file.slice(-3) === '.js');
 
-// Use top-level await so exports can be declared after models are loaded
 for (const file of files) {
     const filePath = path.join(__dirname, file);
     const fileUrl = pathToFileURL(filePath).href;
@@ -44,16 +38,16 @@ for (const file of files) {
 }
 
 Object.keys(db).forEach((modelName) => {
-    if (db[modelName].associate) {
-        db[modelName].associate(db);
-    }
+    if (db[modelName].associate) db[modelName].associate(db);
 });
 
 db.sequelize = sequelize;
 db.Sequelize = Sequelize;
 
 export const User = db.User;
-export const EmailMessage = db.EmailMessage;
+export const MailThread = db.MailThread;
+export const MailMessage = db.MailMessage;
+export const MailThreadStatus = db.MailThreadStatus;
 export const sequelizeInstance = sequelize;
 
 export default db;

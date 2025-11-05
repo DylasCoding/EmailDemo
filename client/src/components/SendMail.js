@@ -15,9 +15,8 @@ export default function SendMail({ token }) {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!isValidEmail(form.to)) return alert("Vui lòng nhập email hợp lệ (ví dụ: abc@def.com)");
-        if (!form.body.trim()) return alert("Nội dung không được để trống");
-
+        if (!isValidEmail(form.to)) return alert("Email không hợp lệ");
+        if (!form.body.trim()) return alert("Nội dung trống");
         setSending(true);
         try {
             await sendMail(token, form);
@@ -25,7 +24,7 @@ export default function SendMail({ token }) {
             setForm({ to: "", subject: "", body: "" });
             navigate("/inbox");
         } catch (err) {
-            alert("Gửi thất bại: " + (err.response?.data?.message || err.message));
+            alert("Gửi thất bại: " + (err.response?.data?.error || err.message));
         } finally {
             setSending(false);
         }

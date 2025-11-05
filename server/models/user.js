@@ -1,19 +1,15 @@
-// javascript
-// server/models/user.js
 import { Model } from 'sequelize';
 import { encrypt, decrypt, hashPassword, comparePassword as comparePasswordFn } from '../src/utils/crypto.js';
 
 export default (sequelize, DataTypes) => {
     class User extends Model {
         static associate(models) {
-            this.hasMany(models.EmailMessage, {
-                foreignKey: 'senderId',
-                as: 'sentMessages'
-            });
-            this.hasMany(models.EmailMessage, {
-                foreignKey: 'recipientId',
-                as: 'receivedMessages'
-            });
+            // Threads (sender / receiver)
+            this.hasMany(models.MailThread, { foreignKey: 'senderId', as: 'sentThreads' });
+            this.hasMany(models.MailThread, { foreignKey: 'receiverId', as: 'receivedThreads' });
+
+            // Messages
+            this.hasMany(models.MailMessage, { foreignKey: 'senderId', as: 'sentMessages' });
         }
 
         async comparePassword(password) {
@@ -58,9 +54,7 @@ export default (sequelize, DataTypes) => {
             validate: {
                 async isUnique(value) {
                     const user = await User.findOne({ where: { email: encrypt(value) } });
-                    if (user) {
-                        throw new Error('Email already exists');
-                    }
+                    if (user) throw new Error('Email already exists');
                 }
             },
             set(value) {
@@ -77,16 +71,13 @@ export default (sequelize, DataTypes) => {
     }, {
         sequelize,
         modelName: 'User',
+        tableName: 'Users',
         hooks: {
             beforeCreate: async (user) => {
-                if (user.password) {
-                    user.password = await hashPassword(user.password);
-                }
+                if (user.password) user.password = await hashPassword(user.password);
             },
             beforeUpdate: async (user) => {
-                if (user.changed('password')) {
-                    user.password = await hashPassword(user.password);
-                }
+                if (user.changed('password')) user.password = await hashPassword(user.password);
             }
         }
     });

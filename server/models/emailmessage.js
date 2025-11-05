@@ -1,24 +1,11 @@
-// javascript
 import { Model } from 'sequelize';
 import { encrypt, decrypt } from '../src/utils/crypto.js';
 
 export default (sequelize, DataTypes) => {
-    class EmailMessage extends Model {
+    class MailMessage extends Model {
         static associate(models) {
-            EmailMessage.belongsTo(models.User, {
-                foreignKey: 'senderId',
-                as: 'sender'
-            });
-            EmailMessage.belongsTo(models.User, {
-                foreignKey: 'recipientId',
-                as: 'recipient'
-            });
-        }
-
-        // getters decrypt stored values
-        get subject() {
-            const val = this.getDataValue('subject');
-            return val == null ? val : decrypt(val);
+            MailMessage.belongsTo(models.MailThread, { foreignKey: 'threadId', as: 'thread' });
+            MailMessage.belongsTo(models.User, { foreignKey: 'senderId', as: 'sender' });
         }
 
         get body() {
@@ -27,21 +14,14 @@ export default (sequelize, DataTypes) => {
         }
     }
 
-    EmailMessage.init({
+    MailMessage.init({
+        threadId: {
+            type: DataTypes.INTEGER,
+            allowNull: false
+        },
         senderId: {
             type: DataTypes.INTEGER,
             allowNull: false
-        },
-        recipientId: {
-            type: DataTypes.INTEGER,
-            allowNull: false
-        },
-        subject: {
-            type: DataTypes.STRING,
-            allowNull: false,
-            set(value) {
-                this.setDataValue('subject', value == null ? value : encrypt(value));
-            }
         },
         body: {
             type: DataTypes.TEXT,
@@ -52,15 +32,14 @@ export default (sequelize, DataTypes) => {
         },
         sentAt: {
             type: DataTypes.DATE,
-            allowNull: false,
             defaultValue: DataTypes.NOW
         }
     }, {
         sequelize,
-        modelName: 'EmailMessage',
-        tableName: 'EmailMessages',
+        modelName: 'MailMessage',
+        tableName: 'MailMessages',
         timestamps: true
     });
 
-    return EmailMessage;
+    return MailMessage;
 };

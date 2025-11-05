@@ -1,6 +1,7 @@
-// src/smtp/smtpServer.js
 import net from 'net';
-import { saveEmail } from '../services/mailService.js';
+import { createNewThreadAndMessage, sendMessageInThread } from '../services/mailService.js';
+import { MailThread } from '../../models/index.js';
+import { decrypt } from '../utils/crypto.js';
 
 export function startSMTPServer() {
     const server = net.createServer((socket) => {
@@ -40,11 +41,30 @@ export function startSMTPServer() {
                         const subject = subjectLine.replace('Subject:', '').trim();
                         const body = bodyLines.join('\n').trim();
 
-                        await saveEmail(sender, recipient, subject, body);
-                        console.log(`Email stored: ${subject}`);
+                        console.log(`✉️ Parsed: subject="${subject}", from=${sender}, to=${recipient}`);
+
+                        if (/^re:/i.test(subject)) {
+                            // 🟢 Nếu subject bắt đầu bằng "Re:", tìm thread cũ
+                            const cleanSubject = subject.replace(/^re:/i, '').trim();
+                            const threads = await MailThread.findAll();
+                            const target = threads.find(t => decrypt(t.title).trim() === cleanSubject);
+
+                            if (target) {
+                                console.log(`📎 Found existing thread id=${target.id} for reply`);
+                                await sendMessageInThread(sender, target.id, body);
+                            } else {
+                                console.log(`⚠️ No thread found for "${cleanSubject}", creating new thread instead`);
+                                await createNewThreadAndMessage(sender, recipient, cleanSubject, body);
+                            }
+                        } else {
+                            // 🟢 Nếu subject mới hoàn toàn → tạo thread mới
+                            await createNewThreadAndMessage(sender, recipient, subject, body);
+                        }
+
+                        console.log(`✅ Email processed successfully`);
                         socket.write('250 Message accepted\r\n');
                     } catch (err) {
-                        console.error('Failed to store email:', err);
+                        console.error('❌ Failed to store email:', err);
                         socket.write('550 Failed to store email\r\n');
                     }
                 } else {
@@ -60,8 +80,8 @@ export function startSMTPServer() {
             }
         });
 
-        socket.on('end', () => console.log('SMTP client disconnected'));
+        socket.on('end', () => console.log('📭 SMTP client disconnected'));
     });
 
-    server.listen(2525, () => console.log('SMTP server running on port 2525'));
+    server.listen(2525, () => console.log('📬 SMTP server running on port 2525'));
 }

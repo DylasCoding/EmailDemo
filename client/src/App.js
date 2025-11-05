@@ -174,7 +174,7 @@ export default function App() {
                                     }
                                 />
                                 <Route
-                                    path="/mail/:id"
+                                    path="/mail/thread/:id"
                                     element={
                                         <ProtectedRoute token={token}>
                                             <MailDetail token={token} />
