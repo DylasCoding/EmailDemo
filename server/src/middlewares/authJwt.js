@@ -1,7 +1,5 @@
 // src/middlewares/authJwt.js
 import { verifyToken } from '../services/authService.js';
-import { User } from '../../models/index.js';
-import { encrypt as encryptFn } from '../utils/crypto.js';
 
 export async function authenticateJWT(req, res, next) {
     const auth = req.headers.authorization;

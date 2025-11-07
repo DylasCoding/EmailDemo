@@ -18,7 +18,7 @@ export async function sendMail(req, res) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // 📨 Soạn thư mới (luôn tạo thread mới)
+        // Soạn thư mới (luôn tạo thread mới)
         await createNewThreadAndMessage(senderEmail, to, subject, body);
 
         return res.json({ success: true, message: 'Mail sent successfully (new thread)' });
@@ -37,7 +37,7 @@ export async function sendReply(req, res) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // 💬 Gửi mail trong hội thoại
+        // Gửi mail trong hội thoại
         await sendMessageInThread(senderEmail, threadId, body);
 
         return res.json({ success: true, message: 'Reply sent successfully' });
@@ -85,7 +85,7 @@ export async function conversationDetail(req, res) {
 export async function sendInThread(req, res) {
     try {
         const senderEmail = req.user.email;  // lấy từ token
-        const threadId = req.params.id;      // ✅ id nằm ở URL
+        const threadId = req.params.id;      // id nằm ở URL
         const { body } = req.body;
 
         const message = await sendMessageInThread(senderEmail, threadId, body);
