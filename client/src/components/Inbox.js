@@ -55,30 +55,52 @@ export default function Inbox({ token }) {
                         (c.partnerId && partnerId && String(c.partnerId) === String(partnerId)) ||
                         (c.partnerEmail && partnerEmail && c.partnerEmail === partnerEmail)
                 );
-                const newConv = {
-                    partnerId: partnerId || (idx >= 0 ? prev[idx].partnerId : null),
-                    partnerEmail: partnerEmail || (idx >= 0 ? prev[idx].partnerEmail : "unknown"),
-                    lastMessage,
-                    lastSentAt: msg.sentAt || new Date().toISOString(),
-                    class: idx >= 0 ? prev[idx].class : "normal"
-                };
-                const next = prev.slice();
-                if (idx >= 0) next.splice(idx, 1);
-                return [newConv, ...next];
+
+                const titleFromMsg = msg.title || msg.subject || null;
+                const lastSentAt = msg.sentAt || new Date().toISOString();
+
+                if (idx >= 0) {
+                    // merge with existing to preserve fields (like title)
+                    const existing = prev[idx];
+                    const merged = {
+                        ...existing,
+                        threadId: msg.threadId || existing.threadId || null,
+                        partnerId: partnerId || existing.partnerId || null,
+                        partnerEmail: partnerEmail || existing.partnerEmail || "unknown",
+                        lastMessage,
+                        lastSentAt,
+                        class: existing.class || "normal",
+                        title: titleFromMsg || existing.title || "(No subject)"
+                    };
+                    const next = prev.slice();
+                    next.splice(idx, 1);
+                    return [merged, ...next];
+                } else {
+                    const newConv = {
+                        threadId: msg.threadId || null,
+                        partnerId: partnerId,
+                        partnerEmail: partnerEmail || "unknown",
+                        lastMessage,
+                        lastSentAt,
+                        class: "normal",
+                        title: titleFromMsg || "(No subject)"
+                    };
+                    return [newConv, ...prev];
+                }
             });
         });
 
         return unsub;
     }, [token, subscribeNewMail]);
 
-    const openConversation = (threadId, partnerEmail) => {
+    const openConversation = (threadId, partnerEmail, title) => {
         if (!threadId) {
             console.warn('openConversation: missing threadId — partnerEmail=', partnerEmail);
             return;
         }
         console.log("openConversation: " + threadId);
         navigate(`/mail/thread/${threadId}`, {
-            state: { threadId, partnerEmail }
+            state: { threadId, partnerEmail, title } // include title
         });
     };
 
@@ -157,7 +179,7 @@ export default function Inbox({ token }) {
                         {filtered.map((c, index) => (
                             <div
                                 key={c.threadId || c.partnerEmail}
-                                onClick={() => openConversation(c.threadId, c.partnerEmail)}
+                                onClick={() => openConversation(c.threadId, c.partnerEmail, c.title)} // pass c.title
                                 className="group cursor-pointer p-4 rounded-2xl bg-white/70 backdrop-blur-sm
                                     border border-blue-100 hover:border-blue-200 transition-all duration-300
                                     hover:shadow-lg hover:scale-[1.02] hover:bg-white/90"

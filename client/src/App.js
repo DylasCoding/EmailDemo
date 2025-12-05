@@ -184,13 +184,6 @@ export default function App() {
                             </Routes>
                         </div>
                     </main>
-
-                    {/* Footer - Subtle */}
-                    <footer className="mt-12 text-center py-8">
-                        <p className="text-sm text-gray-500">
-                            © 2025 BlueMail. Được thiết kế với ❤️ cho trải nghiệm tốt nhất.
-                        </p>
-                    </footer>
                 </div>
             </SocketProvider>
         </Router>

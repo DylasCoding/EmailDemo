@@ -72,7 +72,6 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
             transaction: t
         });
 
-        // ✅ Ép threadId về dạng số
         const realThreadId =
             typeof threadId === 'object'
                 ? threadId.id || threadId.threadId
@@ -82,7 +81,6 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
             console.log('❌ Invalid threadId, raw value:', threadId);
             throw new Error('Invalid threadId');
         }
-
 
         const thread = await MailThread.findByPk(Number(realThreadId), { transaction: t });
         if (!sender || !thread) throw new Error('Invalid sender or thread');
@@ -96,24 +94,51 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
         await thread.update({ updatedAt: new Date() }, { transaction: t });
         await t.commit();
 
-        // 🔔 Realtime cho người gửi và người nhận
+        // Determine the other participant (the "recipient" relative to sender)
         const receiverId = thread.senderId === sender.id ? thread.receiverId : thread.senderId;
         const receiver = await User.findByPk(receiverId);
+        if (!receiver) return message;
 
-        if (global._io && receiver?.email) {
-            const payload = {
-                id: message.id,
-                threadId: thread.id,
-                senderId: sender.id,
-                receiverId,
-                fromEmail: decrypt(sender.getDataValue('email')),
-                toEmail: decrypt(receiver.getDataValue('email')),
-                body,
-                sentAt: message.sentAt,
-            };
+        // Decrypted emails
+        const senderEmailStr = decrypt(sender.getDataValue('email'));
+        const receiverEmailStr = decrypt(receiver.getDataValue('email'));
 
-            global._io.to(payload.toEmail).emit('newMail', payload);
-            global._io.to(payload.fromEmail).emit('newMail', payload);
+        // Core payload fields shared
+        const base = {
+            id: message.id,
+            threadId: thread.id,            // ensure threadId is present
+            senderId: sender.id,
+            receiverId,
+            body,
+            sentAt: message.sentAt,
+            lastMessage: body,
+            lastSentAt: message.sentAt,
+            title: thread.title || '(No subject)',
+            class: thread.class || 'normal'
+        };
+
+        // Payload for the receiver (partner = sender)
+        const payloadForReceiver = {
+            ...base,
+            fromEmail: senderEmailStr,
+            toEmail: receiverEmailStr,
+            partnerEmail: senderEmailStr,
+            partnerId: sender.id
+        };
+
+        // Payload for the sender (partner = receiver)
+        const payloadForSender = {
+            ...base,
+            fromEmail: senderEmailStr,
+            toEmail: receiverEmailStr,
+            partnerEmail: receiverEmailStr,
+            partnerId: receiver.id
+        };
+
+        // Emit specifically to each user's room with correct partner info
+        if (global._io) {
+            global._io.to(receiverEmailStr).emit('newMail', payloadForReceiver);
+            global._io.to(senderEmailStr).emit('newMail', payloadForSender);
         }
 
         return message;
