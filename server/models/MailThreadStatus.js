@@ -1,4 +1,4 @@
-// server/models/mailthreadstatus.js
+// server/models/MailThreadStatus.js
 import { Model } from 'sequelize';
 
 export default (sequelize, DataTypes) => {

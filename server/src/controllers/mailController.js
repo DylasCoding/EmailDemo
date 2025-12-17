@@ -47,6 +47,45 @@ export async function sendReply(req, res) {
     }
 }
 
+//===send with files function remains the same===
+export async function sendMailWithFiles(req, res) {
+    try {
+        const { to, subject, body } = req.body || {};
+        const senderEmail = req.user?.email;
+        const files = req.files || [];
+
+        console.log('DEBUG sendMailWithFiles - req.files:', JSON.stringify(files, null, 2)); // <--- inspect shape
+
+        if (!senderEmail || !to || !body) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+        await createNewThreadAndMessage(senderEmail, to, subject, body, files);
+
+        return res.json({ success: true, message: 'Mail with files sent successfully (new thread)' });
+    }
+    catch (err) {
+        console.error('sendMailWithFiles error', err);
+        return res.status(500).json({ error: err.message });
+    }
+}
+
+export async function sendInThreadWithFiles(req, res) {
+    try {
+        const senderEmail = req.user.email;  // lấy từ token
+        const threadId = req.params.id;      // id nằm ở URL
+        const { body } = req.body;
+        const files = req.files || [];
+
+        console.log('DEBUG sendInThreadWithFiles - req.files:', JSON.stringify(files, null, 2)); // <--- inspect shape
+
+        const message = await sendMessageInThread(senderEmail, threadId, body, files);
+        res.json(message);
+    } catch (err) {
+        console.error("Send in thread with files error:", err);
+        res.status(400).json({ error: err.message });
+    }
+}
+
 // Inbox / Conversation API giữ nguyên
 export async function inbox(req, res) {
     try {
@@ -75,6 +114,7 @@ export async function conversationDetail(req, res) {
         const threadId = parseInt(req.params.threadId, 10);
         if (Number.isNaN(threadId)) return res.status(400).json({ error: 'Invalid threadId' });
         const messages = await getConversationMessagesByThread(req.user.email, threadId);
+        // console.log('message detail', messages);
         return res.json(messages);
     } catch (err) {
         console.error('conversationDetail error', err);

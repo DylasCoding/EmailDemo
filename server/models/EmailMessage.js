@@ -6,6 +6,11 @@ export default (sequelize, DataTypes) => {
         static associate(models) {
             MailMessage.belongsTo(models.MailThread, { foreignKey: 'threadId', as: 'thread' });
             MailMessage.belongsTo(models.User, { foreignKey: 'senderId', as: 'sender' });
+
+            MailMessage.hasMany(models.File, {
+                foreignKey: 'messageId',
+                as: 'files'
+            });
         }
 
         get body() {

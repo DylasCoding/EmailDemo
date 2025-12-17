@@ -9,7 +9,12 @@ import { startSMTPServer } from './smtp/smtpServer.js';
 import { startPOP3Server } from './pop3/pop3Server.js';
 import authRoutes from './routes/authRoutes.js';
 import mailRoutes from './routes/mailRoutes.js';
+import uploadRoutes from "./routes/uploadRoutes.js";
 import { sequelizeInstance as sequelize } from '../models/index.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from "fs";
+
 
 dotenv.config();
 
@@ -24,9 +29,22 @@ app.use(cors({
     credentials: true,
 }));
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const uploadPath = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadPath)) {
+    fs.mkdirSync(uploadPath, { recursive: true });
+    console.log("📁 uploads/ folder created automatically");
+}
+
+// serve uploads folder
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // ======= ROUTES =======
 app.use('/api/auth', authRoutes);
 app.use('/api/mail', mailRoutes);
+app.use('/api/files', uploadRoutes);
 
 // ======= HTTP + SOCKET SERVER =======
 const server = createServer(app);

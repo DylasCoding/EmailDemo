@@ -57,14 +57,6 @@ export const sendMessageInThread = (token, threadId, data) =>
     api.post(`/mail/thread/${threadId}/send`, data, { headers: authHeaders(token) });
 
 
-export const sendReply = (token, data) =>
-    api.post("/mail/reply", data, { headers: authHeaders(token) });
-
-export const getThreadStatuses = async (token) => {
-    const res = await api.get("/mail/thread-status", { headers: authHeaders(token) });
-    return res.data;
-};
-
 export const updateThreadStatus = async (token, threadId, newClass) => {
     if (!token) throw new Error('Missing auth token');
     const res = await api.put(
@@ -74,7 +66,6 @@ export const updateThreadStatus = async (token, threadId, newClass) => {
     );
     return res.data;
 };
-
 
 export const getThreadMessages = async (token, threadId) => {
     const res = await api.get(`/mail/thread/${threadId}`, { headers: authHeaders(token) });
@@ -87,6 +78,15 @@ export const getThreadMessages = async (token, threadId) => {
             senderEmail: typeof m.senderEmail === "string" ? await tryDecryptValue(m.senderEmail) : m.senderEmail,
             body: typeof m.body === "string" ? await tryDecryptValue(m.body) : m.body,
             subject: typeof m.subject === "string" ? await tryDecryptValue(m.subject) : m.subject,
+            files: Array.isArray(m.files)
+                ? m.files.map(f => ({
+                    id: f.id,
+                    fileName: f.fileName,
+                    mimeType: f.mimeType,
+                    fileSize: f.fileSize,
+                    dataBase64: f.dataBase64
+                }))
+                : [],
             sentAt: await tryDecryptDate(m.sentAt),
         }))
     );
@@ -94,37 +94,11 @@ export const getThreadMessages = async (token, threadId) => {
     return { ...res, data: messages };
 };
 
-export const getInbox = async (token) => {
-    const res = await api.get("/mail/inbox", { headers: authHeaders(token) });
-    const decoded = await Promise.all(
-        (res.data || []).map(async (m) => ({
-            ...m,
-            subject: typeof m.subject === "string" ? await tryDecryptValue(m.subject) : m.subject,
-            body: typeof m.body === "string" ? await tryDecryptValue(m.body) : m.body,
-            sentAt: await tryDecryptDate(m.sentAt),
-        }))
-    );
-    return { ...res, data: decoded };
-};
-
-export const getMailById = async (token, id) => {
-    const res = await api.get(`/mail/${id}`, { headers: authHeaders(token) });
-    if (!res.data) return res;
-    const m = res.data;
-    const decoded = {
-        ...m,
-        subject: typeof m.subject === "string" ? await tryDecryptValue(m.subject) : m.subject,
-        body: typeof m.body === "string" ? await tryDecryptValue(m.body) : m.body,
-        sentAt: await tryDecryptDate(m.sentAt),
-    };
-    return { ...res, data: decoded };
-};
-
 export const getConversations = async (token) => {
     const res = await api.get("/mail/conversations", { headers: authHeaders(token) });
     const convos = await Promise.all(
         (res.data || []).map(async (c) => ({
-            threadId: c.threadId, // ✅ quan trọng
+            threadId: c.threadId, // quan trọng
             partnerId: c.partnerId,
             partnerEmail: typeof c.partnerEmail === "string" ? await tryDecryptValue(c.partnerEmail) : c.partnerEmail,
             title: c.title,
@@ -136,17 +110,39 @@ export const getConversations = async (token) => {
     return { ...res, data: convos };
 };
 
+//================= File Upload =================//
+export const uploadFile = (token, messageId, file, onUploadProgress) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('messageId', String(messageId));
 
-export const getConversationMessages = async (token, partnerId) => {
-    const res = await api.get(`/mail/conversations/${partnerId}`, { headers: authHeaders(token) });
-    const msgs = await Promise.all(
-        (res.data || []).map(async (m) => ({
-            ...m,
-            body: typeof m.body === "string" ? await tryDecryptValue(m.body) : m.body,
-            subject: typeof m.subject === "string" ? await tryDecryptValue(m.subject) : m.subject,
-            sentAt: await tryDecryptDate(m.sentAt),
-        }))
-    );
-    return { ...res, data: msgs };
+    return api.post('/files/upload', form, {
+        headers: { ...authHeaders(token) },
+        onUploadProgress,
+    });
 };
 
+export const uploadFiles = (token, messageId, files = [], onUploadProgress) => {
+    const form = new FormData();
+    files.forEach((f) => form.append('files', f));
+    form.append('messageId', String(messageId));
+
+    return api.post('/files/upload', form, {
+        headers: { ...authHeaders(token) },
+        onUploadProgress,
+    });
+};
+
+export const sendMailWithFiles = (token, formData, onUploadProgress) => {
+    return api.post('/mail/send-with-files', formData, {
+        headers: { ...authHeaders(token) }, // do not set Content-Type manually
+        onUploadProgress,
+    });
+};
+
+export const sendMessageInThreadWithFiles = (token, threadId, formData, onUploadProgress) => {
+    return api.post(`/mail/thread/${threadId}/send-with-files`, formData, {
+        headers: { ...authHeaders(token) }, // do not set Content-Type manually
+        onUploadProgress,
+    });
+}

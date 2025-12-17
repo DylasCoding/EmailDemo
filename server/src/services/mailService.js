@@ -2,20 +2,21 @@
 import { User, MailThread, MailMessage,MailThreadStatus, sequelizeInstance as sequelize } from '../../models/index.js';
 import { encrypt as encryptFn, decrypt } from '../utils/crypto.js';
 import { Op } from "sequelize";
+import fs from 'fs/promises';
+import path from 'path';
 
 function isValidId(v) {
     return typeof v === 'number' && Number.isInteger(v) || (typeof v === 'string' && /^\d+$/.test(v));
 }
 
 // 📨 1. Soạn thư mới (tạo thread + message)
-export async function createNewThreadAndMessage(senderEmail, receiverEmail, subject, body) {
+export async function createNewThreadAndMessage(senderEmail, receiverEmail, subject, body, files = []) {
     const t = await sequelize.transaction();
     try {
         const sender = await User.findOne({ where: { email: encryptFn(senderEmail) }, transaction: t });
         const receiver = await User.findOne({ where: { email: encryptFn(receiverEmail) }, transaction: t });
         if (!sender || !receiver) throw new Error('Sender or receiver not found');
 
-        // Tạo thread mới
         const thread = await MailThread.create({
             title: subject || '(no subject)',
             class: 'normal',
@@ -23,37 +24,56 @@ export async function createNewThreadAndMessage(senderEmail, receiverEmail, subj
             receiverId: receiver.id,
         }, { transaction: t });
 
-        // Tạo message đầu tiên
         const message = await MailMessage.create({
             threadId: thread.id,
             senderId: sender.id,
             body,
         }, { transaction: t });
 
+        // Build file records with fallbacks to handle different multer shapes / model column names
+        const fileRecords = files.map(file => {
+            const originalname = file.originalname || file.name || file.filename || null;
+            const filepath = file.path || (file.destination && file.filename ? `${file.destination}/${file.filename}` : null) || file.filepath || null;
+            const mimetype = file.mimetype || file.type || null;
+            const size = file.size || file.bytes || file.sizeBytes || null;
+
+            return {
+                messageId: message.id,
+                fileName: originalname,   // match DB column
+                filePath: filepath,       // match DB column
+                fileSize: size,           // match DB column
+                mimeType: mimetype        // match DB column
+            };
+        }).filter(r => r.fileName || r.filePath);
+
+        // then bulkCreate as before
+        if (fileRecords.length > 0) {
+            await sequelize.models.File.bulkCreate(fileRecords, { transaction: t });
+        }
+
         await t.commit();
 
-// 🔔 Realtime cho người gửi và người nhận
+        // --- realtime emit code unchanged ---
         if (global._io && receiver.email) {
-            const senderEmail = decrypt(sender.getDataValue('email'));
-            const receiverEmail = decrypt(receiver.getDataValue('email'));
+            const senderEmailStr = decrypt(sender.getDataValue('email'));
+            const receiverEmailStr = decrypt(receiver.getDataValue('email'));
 
             const payload = {
-                threadId: thread.id,               // 🔑 Đảm bảo có ID để mở cuộc hội thoại
+                threadId: thread.id,
                 id: thread.id,
-                title: thread.title || '(Không có tiêu đề)',  // 🧠 Hiển thị ở Inbox
+                title: thread.title || '(Không có tiêu đề)',
                 class: thread.class || 'normal',
-                lastMessage: body,                 // 📨 Hiển thị nội dung cuối cùng
-                lastSentAt: message.sentAt,        // ⏰ Hiển thị thời gian ở Inbox
+                lastMessage: body,
+                lastSentAt: message.sentAt,
                 senderId: sender.id,
                 receiverId: receiver.id,
-                senderEmail,
-                receiverEmail,
-                partnerEmail: receiverEmail,       // 👈 Thêm để Inbox hiển thị đúng
+                senderEmail: senderEmailStr,
+                receiverEmail: receiverEmailStr,
+                partnerEmail: receiverEmailStr,
             };
 
-            // Gửi realtime đến cả 2 người
-            global._io.to(receiverEmail).emit('newThread', payload);
-            global._io.to(senderEmail).emit('newThread', payload);
+            global._io.to(receiverEmailStr).emit('newThread', payload);
+            global._io.to(senderEmailStr).emit('newThread', payload);
         }
 
         return { thread, message };
@@ -64,7 +84,7 @@ export async function createNewThreadAndMessage(senderEmail, receiverEmail, subj
 }
 
 /// 💬 2. Gửi trong hội thoại đã có
-export async function sendMessageInThread(senderEmail, threadId, body) {
+export async function sendMessageInThread(senderEmail, threadId, body, files = []) {
     const t = await sequelize.transaction();
     try {
         const sender = await User.findOne({
@@ -91,6 +111,26 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
             body,
         }, { transaction: t });
 
+        // Build file records with same fallback logic as createNewThreadAndMessage
+        const fileRecords = (files || []).map(file => {
+            const originalname = file.originalname || file.name || file.filename || null;
+            const filepath = file.path || (file.destination && file.filename ? `${file.destination}/${file.filename}` : null) || file.filepath || null;
+            const mimetype = file.mimetype || file.type || null;
+            const size = file.size || file.bytes || file.sizeBytes || null;
+
+            return {
+                messageId: message.id,
+                fileName: originalname,
+                filePath: filepath,
+                fileSize: size,
+                mimeType: mimetype
+            };
+        }).filter(r => r.fileName || r.filePath);
+
+        if (fileRecords.length > 0) {
+            await sequelize.models.File.bulkCreate(fileRecords, { transaction: t });
+        }
+
         await thread.update({ updatedAt: new Date() }, { transaction: t });
         await t.commit();
 
@@ -106,7 +146,7 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
         // Core payload fields shared
         const base = {
             id: message.id,
-            threadId: thread.id,            // ensure threadId is present
+            threadId: thread.id,
             senderId: sender.id,
             receiverId,
             body,
@@ -117,7 +157,6 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
             class: thread.class || 'normal'
         };
 
-        // Payload for the receiver (partner = sender)
         const payloadForReceiver = {
             ...base,
             fromEmail: senderEmailStr,
@@ -126,7 +165,6 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
             partnerId: sender.id
         };
 
-        // Payload for the sender (partner = receiver)
         const payloadForSender = {
             ...base,
             fromEmail: senderEmailStr,
@@ -135,7 +173,6 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
             partnerId: receiver.id
         };
 
-        // Emit specifically to each user's room with correct partner info
         if (global._io) {
             global._io.to(receiverEmailStr).emit('newMail', payloadForReceiver);
             global._io.to(senderEmailStr).emit('newMail', payloadForSender);
@@ -147,8 +184,6 @@ export async function sendMessageInThread(senderEmail, threadId, body) {
         throw err;
     }
 }
-
-
 
 // 🧭 Hộp thư đến (Inbox)
 export async function getInbox(email) {
@@ -169,6 +204,7 @@ export async function getInbox(email) {
         updatedAt: t.updatedAt
     }));
 }
+
 
 // 📬 Lấy chi tiết 1 thread theo ID (bao gồm danh sách tin nhắn)
 export async function getMailById(email, threadId) {
@@ -267,18 +303,45 @@ export async function getConversationMessagesByThread(email, threadId) {
     if (!user) return [];
 
     const thread = await MailThread.findOne({
-        where: { id: threadId, [Op.or]: [{ senderId: user.id }, { receiverId: user.id }] },
-        include: [{ model: MailMessage, as: 'messages', order: [['sentAt', 'ASC']] }]
+        where: { id: threadId, [Op.or]: [{ senderId: user.id }, { receiverId: user.id }] }
     });
 
     if (!thread) return [];
 
-    return thread.messages.map(m => ({
-        id: m.id,
-        body: m.body,
-        senderId: m.senderId,
-        sentAt: m.sentAt,
+    const messages = await MailMessage.findAll({
+        where: { threadId: thread.id },
+        order: [['sentAt', 'ASC']],
+        include: [{ model: sequelize.models.File, as: 'files', required: false }]
+    });
+
+    const results = await Promise.all(messages.map(async m => {
+        const files = await Promise.all((m.files || []).map(async f => {
+            if (!f.filePath) return null;
+            try {
+                const abs = path.resolve(f.filePath);
+                const buf = await fs.readFile(abs);
+                return {
+                    id: f.id,
+                    fileName: f.fileName,
+                    mimeType: f.mimeType,
+                    fileSize: f.fileSize,
+                    dataBase64: buf.toString('base64')
+                };
+            } catch (err) {
+                // if file missing or unreadable, skip it
+                return null;
+            }
+        }));
+        return {
+            id: m.id,
+            body: m.body,
+            senderId: m.senderId,
+            sentAt: m.sentAt,
+            files: files.filter(Boolean)
+        };
     }));
+
+    return results;
 }
 
 export async function updateThreadClass(threadId, newClass) {
