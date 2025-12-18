@@ -98,7 +98,7 @@ export async function sendMessageInThread(senderEmail, threadId, body, files = [
                 : threadId;
 
         if (!realThreadId || isNaN(realThreadId)) {
-            console.log('❌ Invalid threadId, raw value:', threadId);
+            console.log('Invalid threadId, raw value:', threadId);
             throw new Error('Invalid threadId');
         }
 
@@ -205,49 +205,6 @@ export async function getInbox(email) {
     }));
 }
 
-
-// 📬 Lấy chi tiết 1 thread theo ID (bao gồm danh sách tin nhắn)
-export async function getMailById(email, threadId) {
-    const user = await User.findOne({ where: { email: encryptFn(email) } });
-    if (!user) throw new Error('User not found');
-
-    // 🔍 Kiểm tra xem user có nằm trong thread này không
-    const thread = await MailThread.findOne({
-        where: {
-            id: threadId,
-            [Op.or]: [
-                { senderId: user.id },
-                { receiverId: user.id },
-            ],
-        },
-        include: [
-            { model: User, as: 'sender' },
-            { model: User, as: 'receiver' },
-            {
-                model: MailMessage,
-                as: 'messages',
-                order: [['sentAt', 'ASC']],
-            },
-        ],
-    });
-
-    if (!thread) throw new Error('Thread not found or access denied');
-
-    return {
-        id: thread.id,
-        title: thread.title,
-        class: thread.class,
-        sender: thread.sender ? decrypt(thread.sender.email) : null,
-        receiver: thread.receiver ? decrypt(thread.receiver.email) : null,
-        messages: thread.messages.map((m) => ({
-            id: m.id,
-            body: m.body,
-            senderId: m.senderId,
-            sentAt: m.sentAt,
-        })),
-    };
-}
-
 // 🧾 Danh sách hội thoại
 export async function getConversations(email) {
     const user = await User.findOne({ where: { email: encryptFn(email) } });
@@ -344,24 +301,6 @@ export async function getConversationMessagesByThread(email, threadId) {
     return results;
 }
 
-export async function updateThreadClass(threadId, newClass) {
-    if (!threadId || !["normal", "star", "spam"].includes(newClass))
-        throw new Error("Invalid threadId or class value");
-
-    const thread = await MailThread.findByPk(threadId);
-    if (!thread) throw new Error("Thread not found");
-
-    // Keep this as a global thread-level class change only (do NOT create per-user statuses here)
-    thread.class = newClass;
-    await thread.save();
-
-    if (global._io) {
-        global._io.emit("updateThreadClass", { threadId, newClass });
-    }
-
-    return thread;
-}
-
 export async function updateUserThreadStatus(threadId, userId, newClass) {
     if (!threadId || !userId || !["normal", "star", "spam"].includes(newClass))
         throw new Error("Invalid parameters");
@@ -380,50 +319,4 @@ export async function updateUserThreadStatus(threadId, userId, newClass) {
         await status.save();
     }
     return status;
-}
-
-// 📨 Lấy danh sách hội thoại của user kèm class cá nhân
-export async function getUserThreadStatuses(userEmail) {
-    const user = await User.findOne({ where: { email: encryptFn(userEmail) } });
-    if (!user) throw new Error('User not found');
-
-    const threads = await MailThread.findAll({
-        include: [
-            {
-                model: MailThreadStatus,
-                as: 'statuses',
-                where: { userId: user.id },
-                required: false
-            }
-        ],
-        order: [['updatedAt', 'DESC']]
-    });
-
-    // Giải mã dữ liệu
-    return threads.map(thread => ({
-        id: thread.id,
-        subject: thread.title ? decrypt(thread.title) : '(Không tiêu đề)',
-        senderId: thread.senderId,
-        receiverId: thread.receiverId,
-        updatedAt: thread.updatedAt,
-        class: thread.statuses?.[0]?.class || 'normal'
-    }));
-}
-
-
-// ⭐ Cập nhật class cá nhân cho user
-export async function setUserThreadStatus(userEmail, threadId, newClass) {
-    if (!threadId || !['normal', 'star', 'spam'].includes(newClass))
-        throw new Error('Invalid threadId or class');
-
-    const user = await User.findOne({ where: { email: encryptFn(userEmail) } });
-    if (!user) throw new Error('User not found');
-
-    await MailThreadStatus.upsert({
-        userId: user.id,
-        threadId,
-        class: newClass
-    });
-
-    return { threadId, class: newClass };
 }

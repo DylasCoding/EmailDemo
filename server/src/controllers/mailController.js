@@ -3,9 +3,8 @@ import {
     createNewThreadAndMessage,
     sendMessageInThread,
     getInbox,
-    getMailById,
     getConversations,
-    getConversationMessagesByThread, updateThreadClass, setUserThreadStatus, getUserThreadStatuses,
+    getConversationMessagesByThread,
     updateUserThreadStatus,
 } from '../services/mailService.js';
 
@@ -24,25 +23,6 @@ export async function sendMail(req, res) {
         return res.json({ success: true, message: 'Mail sent successfully (new thread)' });
     } catch (err) {
         console.error('sendMail error', err);
-        return res.status(500).json({ error: err.message });
-    }
-}
-
-export async function sendReply(req, res) {
-    try {
-        const { threadId, body } = req.body || {};
-        const senderEmail = req.user?.email;
-
-        if (!senderEmail || !threadId || !body) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        // Gửi mail trong hội thoại
-        await sendMessageInThread(senderEmail, threadId, body);
-
-        return res.json({ success: true, message: 'Reply sent successfully' });
-    } catch (err) {
-        console.error('sendReply error', err);
         return res.status(500).json({ error: err.message });
     }
 }
@@ -133,68 +113,6 @@ export async function sendInThread(req, res) {
     } catch (err) {
         console.error("Send in thread error:", err);
         res.status(400).json({ error: err.message });
-    }
-}
-
-
-export async function getMail(req, res) {
-    try {
-        if (!req.user?.email) return res.status(401).json({ error: 'Unauthorized' });
-        const id = parseInt(req.params.id, 10);
-        if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid mail ID' });
-
-        const mail = await getMailById(req.user.email, id);
-        return res.json(mail);
-    } catch (err) {
-        console.error('getMail error', err);
-        return res.status(500).json({ error: err.message });
-    }
-}
-
-export async function updateThreadClassController(req, res) {
-    try {
-        const user = req.user;
-        if (!user) return res.status(401).json({ error: 'Unauthorized' });
-
-        const id = parseInt(req.params.id, 10);
-        const { newClass } = req.body;
-
-        if (Number.isNaN(id) || !['normal', 'star', 'spam'].includes(newClass)) {
-            return res.status(400).json({ error: 'Invalid threadId or class value' });
-        }
-
-        // Persist per-user status into MailThreadStatus (threadId + userId + class)
-        const status = await updateUserThreadStatus(Number(id), user.id, newClass);
-
-        return res.json({ success: true, data: status });
-    } catch (err) {
-        console.error("updateThreadClass error:", err);
-        return res.status(400).json({ success: false, message: err.message });
-    }
-}
-
-export async function getThreadStatuses(req, res) {
-    try {
-        const email = req.user?.email;
-        const result = await getUserThreadStatuses(email);
-        res.json(result);
-    } catch (err) {
-        console.error('getThreadStatuses error:', err);
-        res.status(500).json({ error: 'Failed to load thread statuses' });
-    }
-}
-
-export async function updateThreadStatus(req, res) {
-    try {
-        const email = req.user?.email;
-        const { threadId } = req.params;
-        const { newClass } = req.body; // normal | star | spam
-
-        const result = await setUserThreadStatus(email, threadId, newClass);
-        res.json(result);
-    } catch (err) {
-        console.error('updateThreadStatus error:', err);
-        res.status(500).json({ error: 'Failed to update thread status' });
     }
 }
 

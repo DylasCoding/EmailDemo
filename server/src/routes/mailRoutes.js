@@ -5,10 +5,9 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import {
     sendMail,
-    getMail,
     conversations,
-    conversationDetail, sendReply,
-    sendInThread, updateThreadClassController, getThreadStatuses, sendMailWithFiles, updateThreadStatusHandler,
+    conversationDetail,
+    sendInThread, sendMailWithFiles, updateThreadStatusHandler,
     sendInThreadWithFiles
 } from '../controllers/mailController.js';
 import { authenticateJWT } from '../middlewares/authJwt.js';
@@ -31,13 +30,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 router.post('/send', authenticateJWT, sendMail);       // Soạn thư mới
-router.post('/reply', authenticateJWT, sendReply);     // Gửi tin trong thread
 
 router.post('/thread/:id/send', authenticateJWT, sendInThread);
-
-router.put("/thread/:id/class", authenticateJWT, updateThreadClassController);
-
-router.get('/thread-status', authenticateJWT, getThreadStatuses);
+router.get('/thread/:threadId', authenticateJWT, conversationDetail);
 router.put('/thread-status/:threadId', authenticateJWT, updateThreadStatusHandler);
 
 router.post('/send-with-files', authenticateJWT, upload.array('files', 5), sendMailWithFiles);
@@ -45,12 +40,5 @@ router.post('/thread/:id/send-with-files', authenticateJWT, upload.array('files'
 
 // Danh sách các hội thoại (MailThread)
 router.get('/conversations', authenticateJWT, conversations);
-
-// Danh sách tin nhắn giữa user hiện tại và partnerId
-// router.get('/conversations/:partnerId', authenticateJWT, conversationDetail);
-router.get('/thread/:threadId', authenticateJWT, conversationDetail);
-
-// Lấy chi tiết 1 message cụ thể
-router.get('/:id', authenticateJWT, getMail);
 
 export default router;
