@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+// javascript
+// File: client/src/components/Inbox.js
+import React, { useEffect, useState, useRef } from "react";
 import { useSocketContext } from "../contexts/SocketContext";
 import { useNavigate } from "react-router-dom";
 import { getConversations, updateThreadStatus } from "../api";
@@ -12,6 +14,11 @@ export default function Inbox({ token }) {
     const navigate = useNavigate();
     const { subscribeNewMail, subscribeNewThread } = useSocketContext();
     const [filter, setFilter] = useState("inbox"); // inbox | star | spam
+
+    const headerRef = useRef(null);
+    const listContainerRef = useRef(null);
+    const [listHeight, setListHeight] = useState("60vh");
+    const [scale, setScale] = useState(1);
 
     useEffect(() => {
         if (!token) return;
@@ -30,7 +37,7 @@ export default function Inbox({ token }) {
         if (!token) return;
 
         const unsubThread = subscribeNewThread((threadInfo) => {
-            setConversations(prev => [threadInfo, ...prev]); // thêm vào đầu danh sách
+            setConversations(prev => [threadInfo, ...prev]);
         });
 
         return () => unsubThread();
@@ -60,7 +67,6 @@ export default function Inbox({ token }) {
                 const lastSentAt = msg.sentAt || new Date().toISOString();
 
                 if (idx >= 0) {
-                    // merge with existing to preserve fields (like title)
                     const existing = prev[idx];
                     const merged = {
                         ...existing,
@@ -98,9 +104,8 @@ export default function Inbox({ token }) {
             console.warn('openConversation: missing threadId — partnerEmail=', partnerEmail);
             return;
         }
-        console.log("openConversation: " + threadId);
         navigate(`/mail/thread/${threadId}`, {
-            state: { threadId, partnerEmail, title } // include title
+            state: { threadId, partnerEmail, title }
         });
     };
 
@@ -108,11 +113,28 @@ export default function Inbox({ token }) {
         if (!token) return;
         getConversations(token)
             .then((res) => {
-                console.log('GET /mail/conversations =>', res.data);
                 setConversations(res.data || []);
             })
             .catch((err) => { console.error('getConversations failed:', err.response?.data || err.message); });
     }, [token]);
+
+    // compute available height for the list and a scale factor for cards
+    useEffect(() => {
+        function recompute() {
+            const headerRect = headerRef.current?.getBoundingClientRect();
+            const bottom = headerRect ? headerRect.bottom : 200;
+            const available = Math.max(200, window.innerHeight - bottom - 120);
+            setListHeight(`${available}px`);
+
+            const baseline = 1200;
+            const newScale = Math.min(1, window.innerWidth / baseline);
+            setScale(newScale);
+        }
+
+        recompute();
+        window.addEventListener("resize", recompute);
+        return () => window.removeEventListener("resize", recompute);
+    }, []);
 
     const formatTime = (timestamp) => {
         if (!timestamp) return "";
@@ -138,18 +160,18 @@ export default function Inbox({ token }) {
     });
 
     return (
-        <div className="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen py-8">
-            <div className="max-w-4xl mx-auto px-4">
-                <div className="bg-white/80 backdrop-blur-sm border border-blue-100 rounded-3xl shadow-xl p-6 mb-6">
+        <div className="w-full py-4">
+            <div className="w-full max-w-none lg:max-w-6xl mx-auto px-4">
+
+            {/* Header (flat, white with cream context) */}
+                <div ref={headerRef} className="bg-white border border-white-100 p-6 mb-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
-                            <div className="p-3 bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl shadow-lg">
+                            <div className="p-3 bg-gradient-to-r from-gray-900 to-black rounded-2xl shadow-lg">
                                 <ChatIcon className="text-white" fontSize="large" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-blue-700 bg-clip-text text-transparent">
-                                    Hộp thư
-                                </h1>
+                                <h1 className="text-2xl font-bold text-gray-900">Hộp thư</h1>
                                 <p className="text-sm text-gray-500">{filtered.length} cuộc trò chuyện</p>
                             </div>
                         </div>
@@ -157,7 +179,7 @@ export default function Inbox({ token }) {
                         <select
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
-                            className="border border-blue-200 bg-white/90 rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                            className="border border-amber-200 bg-white rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400 transition"
                         >
                             <option value="inbox">📥 Hộp thư</option>
                             <option value="star">⭐ Star</option>
@@ -166,91 +188,95 @@ export default function Inbox({ token }) {
                     </div>
                 </div>
 
-                {filtered.length === 0 ? (
-                    <div className="text-center py-16">
-                        <div className="w-24 h-24 bg-gradient-to-r from-blue-100 to-blue-200 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <EmailIcon className="text-blue-400 text-4xl" />
+                {/* Scrollable list area (cards sit flat on cream background) */}
+                <div
+                    ref={listContainerRef}
+                    className="bg-transparent overflow-y-auto"
+                    style={{ maxHeight: listHeight, padding: "6px" }}
+                >
+                    {filtered.length === 0 ? (
+                        <div className="text-center py-16">
+                            <div className="w-24 h-24 bg-gradient-to-r from-amber-50 to-white-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                                <EmailIcon className="text-amber-400 text-4xl" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-gray-700 mb-2">Không có cuộc trò chuyện</h3>
+                            <p className="text-gray-500 mb-6">Hãy gửi email đầu tiên để bắt đầu kết nối</p>
                         </div>
-                        <h3 className="text-xl font-semibold text-gray-700 mb-2">Không có cuộc trò chuyện</h3>
-                        <p className="text-gray-500 mb-6">Hãy gửi email đầu tiên để bắt đầu kết nối</p>
-                    </div>
-                ) : (
-                    <div className="space-y-1">
-                        {filtered.map((c, index) => (
-                            <div
-                                key={c.threadId || c.partnerEmail}
-                                onClick={() => openConversation(c.threadId, c.partnerEmail, c.title)} // pass c.title
-                                className="group cursor-pointer p-4 rounded-2xl bg-white/70 backdrop-blur-sm
-                                    border border-blue-100 hover:border-blue-200 transition-all duration-300
-                                    hover:shadow-lg hover:scale-[1.02] hover:bg-white/90"
-                            >
-                                <div className="flex items-start justify-between">
-                                    <div className="flex items-center space-x-3 flex-1 min-w-0">
-                                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-md">
-                                            <span className="text-white font-semibold text-sm">
-                                                {c.partnerEmail?.charAt(0).toUpperCase()}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="font-semibold text-gray-800 truncate pr-2">{c.title}</h3>
-                                                <div
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-                                                        const nextClass =
-                                                            c.class === "star" ? "normal" : c.class === "spam" ? "normal" : "star";
-
-                                                        // Basic guards
-                                                        if (!token) {
-                                                            console.warn("updateThreadStatus: missing auth token");
-                                                            return;
-                                                        }
-                                                        if (!c.threadId) {
-                                                            console.warn("updateThreadStatus: missing threadId — cannot update server for local-only conversation", c);
-                                                            // Optionally: create thread on server first, or show UI to the user.
-                                                            return;
-                                                        }
-
-                                                        try {
-                                                            // call API first
-                                                            await updateThreadStatus(token, c.threadId, nextClass);
-
-                                                            // update local state only on success
-                                                            setConversations((prev) =>
-                                                                prev.map((conv) =>
-                                                                    conv.threadId === c.threadId ? { ...conv, class: nextClass } : conv
-                                                                )
-                                                            );
-                                                        } catch (err) {
-                                                            console.error("updateThreadStatus failed:", err.response?.data || err.message || err);
-                                                        }
-                                                    }}
-                                                    className="cursor-pointer"
-                                                >
-                                                    {c.class === "star" ? (
-                                                        <StarIcon className="text-yellow-400" fontSize="small" />
-                                                    ) : c.class === "spam" ? (
-                                                        <WarningAmberIcon className="text-red-500" fontSize="small" />
-                                                    ) : (
-                                                        <StarIcon className="text-gray-300" fontSize="small" />
-                                                    )}
-                                                </div>
+                    ) : (
+                        <div className="space-y-3" style={{ transformOrigin: "top left" }}>
+                            {filtered.map((c) => (
+                                <div
+                                    key={c.threadId || c.partnerEmail}
+                                    onClick={() => openConversation(c.threadId, c.partnerEmail, c.title)}
+                                    className="group cursor-pointer p-4 bg-white border border-white-100 hover:border-amber-200 transition-all duration-200"
+                                    style={{
+                                        borderRadius: "8px",
+                                        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                                        transform: `scale(${scale})`,
+                                        transformOrigin: "top left"
+                                    }}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                            <div className="w-10 h-10 bg-gradient-to-r from-gray-900 to-black rounded-full flex items-center justify-center shadow-md">
+                                                <span className="text-amber-50 font-semibold text-sm">
+                                                    {c.partnerEmail?.charAt(0).toUpperCase()}
+                                                </span>
                                             </div>
-                                            <p className="text-sm text-gray-600 mt-1 line-clamp-2 leading-relaxed">
-                                                {c.lastMessage}
-                                            </p>
-                                        </div>
-                                    </div>
 
-                                    <div className="flex flex-col items-end ml-3 flex-shrink-0">
-                                        <div className="text-xs text-gray-400 mb-1">{formatTime(c.lastSentAt)}</div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between">
+                                                    <h3 className="font-semibold text-gray-800 truncate pr-2 text-sm md:text-base">{c.title}</h3>
+                                                    <div
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            const nextClass =
+                                                                c.class === "star" ? "normal" : c.class === "spam" ? "normal" : "star";
+
+                                                            if (!token) {
+                                                                console.warn("updateThreadStatus: missing auth token");
+                                                                return;
+                                                            }
+                                                            if (!c.threadId) {
+                                                                console.warn("updateThreadStatus: missing threadId — cannot update server for local-only conversation", c);
+                                                                return;
+                                                            }
+
+                                                            try {
+                                                                await updateThreadStatus(token, c.threadId, nextClass);
+                                                                setConversations((prev) =>
+                                                                    prev.map((conv) =>
+                                                                        conv.threadId === c.threadId ? { ...conv, class: nextClass } : conv
+                                                                    )
+                                                                );
+                                                            } catch (err) {
+                                                                console.error("updateThreadStatus failed:", err.response?.data || err.message || err);
+                                                            }
+                                                        }}
+                                                        className="cursor-pointer ml-2"
+                                                    >
+                                                        {c.class === "star" ? (
+                                                            <StarIcon className="text-yellow-400" fontSize="small" />
+                                                        ) : c.class === "spam" ? (
+                                                            <WarningAmberIcon className="text-red-500" fontSize="small" />
+                                                        ) : (
+                                                            <StarIcon className="text-gray-300" fontSize="small" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <p className="text-sm text-gray-600 mt-1 line-clamp-2 leading-relaxed">{c.lastMessage}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-end ml-3 flex-shrink-0">
+                                            <div className="text-xs text-gray-400 mb-1">{formatTime(c.lastSentAt)}</div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
