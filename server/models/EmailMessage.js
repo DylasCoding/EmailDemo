@@ -35,6 +35,10 @@ export default (sequelize, DataTypes) => {
                 this.setDataValue('body', value == null ? value : encrypt(value));
             }
         },
+        isRead:{
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
+        },
         sentAt: {
             type: DataTypes.DATE,
             defaultValue: DataTypes.NOW

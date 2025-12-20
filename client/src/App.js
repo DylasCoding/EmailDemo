@@ -95,7 +95,7 @@ export default function App() {
                                 </div>
                             </div>
                             <div>
-                                <h1 className="text-lg font-bold text-gray-900">BlueMail</h1>
+                                <h1 className="text-lg font-bold text-gray-900">Mail</h1>
                                 <p className="text-xs text-gray-500">Premium</p>
                             </div>
                         </div>

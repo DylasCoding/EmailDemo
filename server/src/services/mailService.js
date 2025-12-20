@@ -242,6 +242,22 @@ export async function getConversations(email) {
         // Prefer per-user status, then thread-level class, then fallback to 'normal'
         const effectiveClass = t.statuses?.[0]?.class || t.class || 'normal';
 
+        let isRead = true;
+        let lastSenderId = null;
+
+        if (lastMsg) {
+            lastSenderId = lastMsg.senderId;
+            isRead = false;
+
+            // if (lastMsg.senderId === user.id) {
+            //     // Tin nhắn do chính user gửi → luôn coi là đã đọc
+            //     isRead = true;
+            // } else {
+            //     // Tin nhắn từ người khác → lấy theo DB
+            //     isRead = lastMsg.isRead;
+            // }
+        }
+
         return {
             threadId: t.id,
             title: t.title || '(No subject)',
@@ -249,7 +265,9 @@ export async function getConversations(email) {
             partnerId: partner?.id ?? null,
             partnerEmail: partner ? decrypt(partner.email) : null,
             lastMessage: lastMsg ? lastMsg.body : '',
-            lastSentAt: lastMsg ? lastMsg.sentAt : t.updatedAt
+            lastSentAt: lastMsg ? lastMsg.sentAt : t.updatedAt,
+            isRead,
+            lastSenderId,
         };
     });
 }

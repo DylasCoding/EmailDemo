@@ -34,6 +34,8 @@ export async function sendMailWithFiles(req, res) {
         const senderEmail = req.user?.email;
         const files = req.files || [];
 
+        console.log('DEBUG Files sent to server:', req.files); // <--- raw files
+
         console.log('DEBUG sendMailWithFiles - req.files:', JSON.stringify(files, null, 2)); // <--- inspect shape
 
         if (!senderEmail || !to || !body) {
@@ -55,6 +57,8 @@ export async function sendInThreadWithFiles(req, res) {
         const threadId = req.params.id;      // id nằm ở URL
         const { body } = req.body;
         const files = req.files || [];
+
+        console.log('DEBUG Files sent to server:', req.files); // <--- raw files
 
         console.log('DEBUG sendInThreadWithFiles - req.files:', JSON.stringify(files, null, 2)); // <--- inspect shape
 

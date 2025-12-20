@@ -105,8 +105,12 @@ export const getConversations = async (token) => {
             class: c.class,
             lastMessage: typeof c.lastMessage === "string" ? await tryDecryptValue(c.lastMessage) : c.lastMessage,
             lastSentAt: await tryDecryptDate(c.lastSentAt),
+            isRead: c.isRead,
+            lastSenderId: c.lastSenderId,
         }))
     );
+
+    console.log(convos);
     return { ...res, data: convos };
 };
 
