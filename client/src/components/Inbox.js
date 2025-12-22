@@ -1,7 +1,7 @@
-// File: client/src/components/Inbox.js
+// javascript
 import React, { useEffect, useState, useRef } from "react";
 import { useSocketContext } from "../contexts/SocketContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { getConversations, updateThreadStatus } from "../api";
 import ChatIcon from "@mui/icons-material/Chat";
 import EmailIcon from "@mui/icons-material/Email";
@@ -11,8 +11,16 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 export default function Inbox({ token, currentUserId }) {
     const [conversations, setConversations] = useState([]);
     const navigate = useNavigate();
+    const location = useLocation();
     const { subscribeNewMail, subscribeNewThread } = useSocketContext();
-    const [filter, setFilter] = useState("inbox"); // inbox | star | spam
+    // initialize filter from hash
+    const initialFilter = (() => {
+        const h = window.location.hash || "";
+        if (h === "#starred") return "star";
+        if (h === "#spam") return "spam";
+        return "inbox";
+    })();
+    const [filter, setFilter] = useState(initialFilter); // inbox | star | spam
 
     const headerRef = useRef(null);
     const listContainerRef = useRef(null);
@@ -159,6 +167,14 @@ export default function Inbox({ token, currentUserId }) {
         return c.isRead === true;
     };
 
+    // Sync filter with URL hash
+    useEffect(() => {
+        const h = location.hash || "";
+        if (h === "#starred") setFilter("star");
+        else if (h === "#spam") setFilter("spam");
+        else setFilter("inbox");
+    }, [location.hash]);
+
     const filtered = conversations.filter((c) => {
         if (filter === "star") return c.class === "star";
         if (filter === "spam") return c.class === "spam";
@@ -184,7 +200,13 @@ export default function Inbox({ token, currentUserId }) {
 
                         <select
                             value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
+                            onChange={(e) => {
+                                const v = e.target.value;
+                                setFilter(v);
+                                if (v === "star") window.location.hash = "#starred";
+                                else if (v === "spam") window.location.hash = "#spam";
+                                else window.location.hash = "";
+                            }}
                             className="border border-amber-200 bg-white rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400 transition"
                         >
                             <option value="inbox">📥 Hộp thư</option>

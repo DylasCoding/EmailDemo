@@ -35,3 +35,63 @@ export async function sendEmailWithSendGrid(senderEmail, receiverEmail, subject,
         return { success: false, error: String(error), token };
     }
 }
+
+/**
+ * Reply to an existing external email using trackingToken
+ *
+ * @param {string} senderEmail   email người reply (user trong hệ thống)
+ * @param {string} receiverEmail email bên ngoài (gmail/yahoo...)
+ * @param {string} originalSubject subject gốc (đã có [ref:xxx])
+ * @param {string} trackingToken token đã tồn tại
+ * @param {string} body nội dung reply
+ */
+export async function replyEmailWithSendGrid(
+    senderEmail,
+    receiverEmail,
+    originalSubject,
+    trackingToken,
+    body
+) {
+    if (!trackingToken) {
+        throw new Error('Missing trackingToken for reply');
+    }
+
+    // đảm bảo subject có Re: và token
+    let replySubject = originalSubject || '(No subject)';
+
+    if (!replySubject.toLowerCase().startsWith('re:')) {
+        replySubject = `Re: ${replySubject}`;
+    }
+
+    if (!replySubject.includes(`[ref:${trackingToken}]`)) {
+        replySubject += ` [ref:${trackingToken}]`;
+    }
+
+    const msg = {
+        to: receiverEmail,
+        from: process.env.SENDGRID_FROM_EMAIL,
+        replyTo: process.env.SENDGRID_FROM_EMAIL,
+        subject: replySubject,
+        text: body,
+        html: `
+            <p><strong>Reply from:</strong> ${senderEmail}</p>
+            <p>${body}</p>
+            <hr />
+            <p style="font-size:12px;color:#888">
+                Ref: ${trackingToken}
+            </p>
+        `,
+        headers: {
+            'X-Tracking-Ref': trackingToken
+        }
+    };
+
+    try {
+        await sgMail.send(msg);
+        console.log(`↩️ Replied to ${receiverEmail} with token ${trackingToken}`);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ Failed to reply via SendGrid:', error);
+        return { success: false, error: String(error) };
+    }
+}

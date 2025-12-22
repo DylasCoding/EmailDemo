@@ -59,7 +59,7 @@ export async function sendExternalEmail(senderEmail, receiverEmail, subject, bod
 
     // Log into ExternalEmailLog AFTER message exists, include trackingToken and explicit receiverId null
     await ExternalEmailLog.create({
-        messageId: message.id,
+        messageId: thread.id,
         senderEmail: senderEmail,
         receiverEmail: receiverEmail,
         trackingToken: sendGridResult.token || null,

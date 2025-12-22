@@ -1,17 +1,20 @@
 // javascript
-// File: client/src/App.js
 import React, { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, NavLink, Navigate, useLocation, Link } from "react-router-dom";
 import { jwtDecode } from "jwt-decode";
 import EmailIcon from "@mui/icons-material/Email";
 import PersonIcon from "@mui/icons-material/Person";
 import ExitToAppIcon from "@mui/icons-material/ExitToApp";
+import StarIcon from "@mui/icons-material/Star";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 
 import Register from "./components/Register";
 import Login from "./components/Login";
 import Inbox from "./components/Inbox";
 import SendMail from "./components/SendMail";
 import MailDetail from "./components/MailDetail";
+import CalendarPlanner from "./components/CalendarPlanner";
 import ProtectedRoute from "./routes/ProtectedRoute";
 
 import { initSocket, disconnectSocket } from "./socket";
@@ -81,6 +84,42 @@ export default function App() {
     const activeClasses = "bg-gray-900 text-amber-50 shadow-lg";
     const inactiveClasses = "text-gray-800 hover:bg-amber-50";
 
+    // Subtabs component must be used inside Router so useLocation works
+    function InboxSubTabs() {
+        const location = useLocation();
+        const hash = location.hash || "";
+        const starActive = hash === "#starred";
+        const spamActive = hash === "#spam";
+
+        return (
+            <div className="mt-2 ml-8 flex flex-col space-y-1">
+                <Link
+                    to="/inbox"
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${!starActive && !spamActive ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:bg-amber-50"}`}
+                >
+                    <EmailIcon fontSize="small" />
+                    <span>All</span>
+                </Link>
+
+                <Link
+                    to="/inbox#starred"
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${starActive ? "bg-gray-900 text-amber-50" : "text-gray-600 hover:bg-amber-50"}`}
+                >
+                    <StarIcon fontSize="small" />
+                    <span>Star</span>
+                </Link>
+
+                <Link
+                    to="/inbox#spam"
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm ${spamActive ? "bg-gray-900 text-amber-50" : "text-gray-600 hover:bg-amber-50"}`}
+                >
+                    <WarningAmberIcon fontSize="small" />
+                    <span>Spam</span>
+                </Link>
+            </div>
+        );
+    }
+
     return (
         <Router>
             <SocketProvider token={token} userEmail={user?.email}>
@@ -116,14 +155,24 @@ export default function App() {
                         {/* Navigation */}
                         <nav className="flex-1">
                             <div className="space-y-2">
-                                <NavLink to="/inbox" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
-                                    <EmailIcon fontSize="small" />
-                                    <span>Hộp thư</span>
-                                </NavLink>
+                                <div>
+                                    <NavLink to="/inbox" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
+                                        <EmailIcon fontSize="small" />
+                                        <span>Hộp thư</span>
+                                    </NavLink>
+
+                                    {/* Subtabs under Hộp thư */}
+                                    <InboxSubTabs />
+                                </div>
 
                                 <NavLink to="/send" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
                                     <PersonIcon fontSize="small" />
                                     <span>Soạn thư</span>
+                                </NavLink>
+
+                                <NavLink to="/calendar" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
+                                    <CalendarTodayIcon fontSize="small" />
+                                    <span>Calendar</span>
                                 </NavLink>
 
                                 {!token ? (
@@ -172,6 +221,14 @@ export default function App() {
                                         element={
                                             <ProtectedRoute token={token}>
                                                 <SendMail token={token} />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route
+                                        path="/calendar"
+                                        element={
+                                            <ProtectedRoute token={token}>
+                                                <CalendarPlanner token={token} />
                                             </ProtectedRoute>
                                         }
                                     />

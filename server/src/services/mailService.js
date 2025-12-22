@@ -1,5 +1,12 @@
 // src/services/mailService.js
-import { User, MailThread, MailMessage,MailThreadStatus, sequelizeInstance as sequelize } from '../../models/index.js';
+import {
+    User,
+    MailThread,
+    MailMessage,
+    MailThreadStatus,
+    sequelizeInstance as sequelize,
+    ExternalEmailLog
+} from '../../models/index.js';
 import { encrypt as encryptFn, decrypt } from '../utils/crypto.js';
 import { Op } from "sequelize";
 import fs from 'fs/promises';
@@ -7,7 +14,7 @@ import path from 'path';
 import {isSpam} from '../spamDetector/spamDetector.js';
 import {sendEmailWithSendGrid} from "./sendGridService.js";
 import {findUserByEmail, isExternalEmail, sendExternalEmail, sendInternalEmail} from './Helper/emailHelpers.js';
-import {sendReplyViaGmail} from "./Helper/gmailHelper.js";
+import {findGmailThreadIdByToken, sendReplyViaGmail} from "./Helper/gmailHelper.js";
 
 // 📨1 Main Function: Soạn thư mới (tạo thread + message)
 export async function createNewThreadAndMessage(
@@ -156,6 +163,60 @@ export async function sendMessageInThread(senderEmail, threadId, body, files = [
         if (global._io) {
             global._io.to(receiverEmailStr).emit('newMail', payloadForReceiver);
             global._io.to(senderEmailStr).emit('newMail', payloadForSender);
+        }
+        // If recipient is external Gmail, try to append this reply into the Gmail conversation
+        try {
+            if (isExternalEmail(receiverEmailStr)) {
+                // Find ExternalEmailLog linked to this thread (initial external outgoing message)
+                const extLog = await ExternalEmailLog.findOne({
+                    where: { threadId: thread.id }
+                });
+                if (extLog && extLog.trackingToken) {
+                    // existing logic: findGmailThreadIdByToken(...) and sendReplyViaGmail(...)
+                }
+
+                if (extLog && extLog.trackingToken) {
+                    try {
+                        // search Gmail for the token to obtain provider thread id and one message id
+                        const provider = await findGmailThreadIdByToken(global.gmailClient, extLog.trackingToken);
+                        if (provider && provider.threadId) {
+                            // try to read original Message-ID header to set In-Reply-To/References
+                            let originalMessageId = null;
+                            try {
+                                const msgDetail = await global.gmailClient.users.messages.get({
+                                    userId: 'me',
+                                    id: provider.messageId,
+                                    format: 'metadata',
+                                    metadataHeaders: ['Message-ID']
+                                });
+                                originalMessageId = msgDetail?.data?.payload?.headers?.find(h => h.name.toLowerCase() === 'message-id')?.value || null;
+                            } catch (e) {
+                                // continue even if we cannot fetch the full metadata
+                                console.warn('Could not fetch original Message-ID header:', e?.message || e);
+                            }
+
+                            await sendReplyViaGmail(
+                                global.gmailClient,
+                                receiverEmailStr,
+                                thread.title || '(No subject)',
+                                body,
+                                provider.threadId,
+                                extLog.trackingToken,
+                                originalMessageId
+                            );
+                            console.log(`✅ Gmail reply sent to ${receiverEmailStr} in thread ${provider.threadId} (found by trackingToken)`);
+                        } else {
+                            console.log('⚠️ No Gmail thread found by trackingToken — cannot append to Gmail conversation.');
+                        }
+                    } catch (gErr) {
+                        console.error('❌ sendReplyViaGmail (via token search) failed:', gErr);
+                    }
+                } else {
+                    console.log('⚠️ No ExternalEmailLog with trackingToken found for this thread — cannot append to Gmail conversation.');
+                }
+            }
+        } catch (err) {
+            console.error('❌ Error while attempting Gmail reply flow:', err);
         }
 
         return message;

@@ -83,7 +83,7 @@ export default function SendMail({ token }) {
                         <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-800 via-gray-600 to-gray-700 bg-clip-text text-transparent">
                             Soạn thư mới
                         </h1>
-                        <button type="button" onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
+                        <button type="button" onClick={() => navigate(-3)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors">
                             <CloseIcon className="text-gray-600" />
                         </button>
                     </div>

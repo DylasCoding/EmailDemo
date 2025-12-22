@@ -1,26 +1,23 @@
+// File: `server/models/ExternalEmailLog.js`
 import { Model } from 'sequelize';
 
 export default (sequelize, DataTypes) => {
     class ExternalEmailLog extends Model {
         static associate(models) {
-            ExternalEmailLog.belongsTo(models.MailMessage, {
-                foreignKey: 'messageId',
-                as: 'message',
-                onDelete: 'CASCADE'
-            });
+            ExternalEmailLog.belongsTo(models.MailThread, { foreignKey: 'threadId', as: 'thread' });
         }
     }
 
     ExternalEmailLog.init({
-        messageId: {
+        threadId: {
             type: DataTypes.INTEGER,
             allowNull: false
         },
-        receiverEmail : {
+        receiverEmail: {
             type: DataTypes.STRING,
             allowNull: false
         },
-        trackingToken:{
+        trackingToken: {
             type: DataTypes.STRING,
             allowNull: true,
             unique: true

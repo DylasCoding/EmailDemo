@@ -137,24 +137,15 @@ export async function checkNewReplies(gmail) {
                     const rawSnippet = detail.data.snippet || '';
                     const replyText = extractReplyText(rawSnippet) || '(No content)';
 
-                    console.log(`📣 Reply received for tracked message token=${token} from=${fromHeader}. snippet=${rawSnippet}`);
-                    // find the original MailMessage to get threadId
-                    let threadId = null;
-                    try {
-                        const originalMsg = await MailMessage.findByPk(log.messageId);
-                        threadId = originalMsg ? originalMsg.threadId : null;
-                    } catch (err) {
-                        console.error('❌ Failed to load original MailMessage:', err);
-                    }
+                    // log.threadId already stores local MailThread.id
+                    const threadId = log.threadId || null;
 
                     if (!threadId) {
-                        console.log(`⚠️ No threadId found for ExternalEmailLog.messageId=${log.messageId}, skipping sendMessageInThread`);
+                        console.log(`⚠️ No threadId found on ExternalEmailLog.id=${log.id}, skipping sendMessageInThread`);
                     } else {
-                        // check if the sender email maps to a user in the system
                         const user = await findUserByEmail(fromEmailAddr);
                         if (user) {
                             try {
-                                // prefer using sendMessageInThread so created message uses user.id as senderId
                                 await sendMessageInThread(fromEmailAddr, threadId, replyText);
                                 console.log(`✅ Appended reply to thread ${threadId} as user.id=${user.id}`);
                             } catch (err) {

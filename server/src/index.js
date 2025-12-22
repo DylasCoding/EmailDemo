@@ -1,5 +1,5 @@
 // javascript
-// File: `server/src/index.js`
+// File: `server/src/index.js` (fixed: start Gmail watcher only once)
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -11,6 +11,7 @@ import { startPOP3Server } from './pop3/pop3Server.js';
 import authRoutes from './routes/authRoutes.js';
 import mailRoutes from './routes/mailRoutes.js';
 import uploadRoutes from "./routes/uploadRoutes.js";
+import calendarRoutes from './routes/calendarRoutes.js';
 import { sequelizeInstance as sequelize } from '../models/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -46,6 +47,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/mail', mailRoutes);
 app.use('/api/files', uploadRoutes);
+app.use('/calendar',calendarRoutes)
 
 // ======= HTTP + SOCKET SERVER =======
 const server = createServer(app);
@@ -69,13 +71,22 @@ io.on('connection', (socket) => {
     });
 });
 
+// ======= GMAIL WATCHER =======
+global.gmailClient = null;
 let gmailClient = null;
+let gmailWatcherStarted = false; // guard to prevent double-start
 
 async function startEmailWatcher() {
     if (!gmailClient) {
         console.log('⚠️ Gmail client not available, watcher not started');
         return;
     }
+
+    if (gmailWatcherStarted) {
+        console.log('⚠️ Gmail watcher already started, skipping duplicate start');
+        return;
+    }
+    gmailWatcherStarted = true;
 
     console.log('👀 Gmail Watcher started...');
 
@@ -92,7 +103,7 @@ async function startEmailWatcher() {
         } catch (error) {
             console.error('❌ Error checking Gmail:', error.message || error);
         }
-    }, 5000); // 60.000ms = 1 phút quét một lần
+    }, 5000); // 5.000ms = 5 seconds
 }
 
 // ======= DATABASE INIT + SERVER START =======
@@ -106,14 +117,13 @@ async function startEmailWatcher() {
             console.log(`API Server running on http://localhost:${PORT}`);
         });
 
-        // Await creation of gmail client so it's a usable client object (not a Promise)
+        // Initialize Gmail client once and start watcher once
         try {
             gmailClient = await createGmailClient();
-            // start watcher only after client created
+            global.gmailClient = gmailClient;
             await startEmailWatcher();
         } catch (gmailErr) {
             console.error('❌ Could not initialize Gmail client:', gmailErr.message || gmailErr);
-            // optional: continue without watcher
         }
 
         startSMTPServer(); // port 2525
