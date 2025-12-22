@@ -1,12 +1,16 @@
 // utils.js
-function tokenize(text) {
+
+// Thêm từ khóa export trực tiếp trước các hàm
+export function tokenize(text) {
+    if (!text) return [];
     return text
         .toLowerCase()
         .replace(/[^a-z\s]/g, "")
-        .split(/\s+/);
+        .split(/\s+/)
+        .filter(token => token.length > 0); // Lọc bỏ khoảng trắng thừa
 }
 
-function textToVector(tokens, vocab) {
+export function textToVector(tokens, vocab) {
     const vector = {};
     for (const word of tokens) {
         if (vocab[word]) {
@@ -16,7 +20,7 @@ function textToVector(tokens, vocab) {
     return vector;
 }
 
-function cosineSimilarity(v1, v2) {
+export function cosineSimilarity(v1, v2) {
     let dot = 0;
     let mag1 = 0;
     let mag2 = 0;
@@ -32,5 +36,3 @@ function cosineSimilarity(v1, v2) {
 
     return dot / (Math.sqrt(mag1) * Math.sqrt(mag2) || 1);
 }
-
-module.exports = { tokenize, textToVector, cosineSimilarity };

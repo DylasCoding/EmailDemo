@@ -1,4 +1,5 @@
-// src/index.js
+// javascript
+// File: `server/src/index.js`
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -14,7 +15,7 @@ import { sequelizeInstance as sequelize } from '../models/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from "fs";
-
+import { checkNewReplies, createGmailClient } from "./gmail/gmailService.js";
 
 dotenv.config();
 
@@ -68,6 +69,32 @@ io.on('connection', (socket) => {
     });
 });
 
+let gmailClient = null;
+
+async function startEmailWatcher() {
+    if (!gmailClient) {
+        console.log('⚠️ Gmail client not available, watcher not started');
+        return;
+    }
+
+    console.log('👀 Gmail Watcher started...');
+
+    setInterval(async () => {
+        try {
+            const replies = await checkNewReplies(gmailClient);
+
+            if (replies.length > 0) {
+                replies.forEach(reply => {
+                    console.log(`📩 New reply from ${reply.from}: ${reply.snippet}`);
+                    // handle reply...
+                });
+            }
+        } catch (error) {
+            console.error('❌ Error checking Gmail:', error.message || error);
+        }
+    }, 5000); // 60.000ms = 1 phút quét một lần
+}
+
 // ======= DATABASE INIT + SERVER START =======
 (async () => {
     try {
@@ -78,6 +105,16 @@ io.on('connection', (socket) => {
         server.listen(PORT, () => {
             console.log(`API Server running on http://localhost:${PORT}`);
         });
+
+        // Await creation of gmail client so it's a usable client object (not a Promise)
+        try {
+            gmailClient = await createGmailClient();
+            // start watcher only after client created
+            await startEmailWatcher();
+        } catch (gmailErr) {
+            console.error('❌ Could not initialize Gmail client:', gmailErr.message || gmailErr);
+            // optional: continue without watcher
+        }
 
         startSMTPServer(); // port 2525
         startPOP3Server(); // port 1100

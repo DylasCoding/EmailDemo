@@ -4,79 +4,58 @@ import { encrypt as encryptFn, decrypt } from '../utils/crypto.js';
 import { Op } from "sequelize";
 import fs from 'fs/promises';
 import path from 'path';
+import {isSpam} from '../spamDetector/spamDetector.js';
+import {sendEmailWithSendGrid} from "./sendGridService.js";
+import {findUserByEmail, isExternalEmail, sendExternalEmail, sendInternalEmail} from './Helper/emailHelpers.js';
+import {sendReplyViaGmail} from "./Helper/gmailHelper.js";
 
-function isValidId(v) {
-    return typeof v === 'number' && Number.isInteger(v) || (typeof v === 'string' && /^\d+$/.test(v));
-}
-
-// 📨 1. Soạn thư mới (tạo thread + message)
-export async function createNewThreadAndMessage(senderEmail, receiverEmail, subject, body, files = []) {
+// 📨1 Main Function: Soạn thư mới (tạo thread + message)
+export async function createNewThreadAndMessage(
+    senderEmail,
+    receiverEmail,
+    subject,
+    body,
+    files = []
+) {
     const t = await sequelize.transaction();
+    console.log(body, senderEmail, receiverEmail);
+
     try {
-        const sender = await User.findOne({ where: { email: encryptFn(senderEmail) }, transaction: t });
-        const receiver = await User.findOne({ where: { email: encryptFn(receiverEmail) }, transaction: t });
-        if (!sender || !receiver) throw new Error('Sender or receiver not found');
+        // Tìm sender trong hệ thống (sender luôn phải có trong CSDL)
+        const sender = await findUserByEmail(senderEmail, t);
+        if (!sender) {
+            throw new Error('Sender not found with email: ' + senderEmail);
+        }
 
-        const thread = await MailThread.create({
-            title: subject || '(no subject)',
-            class: 'normal',
-            senderId: sender.id,
-            receiverId: receiver.id,
-        }, { transaction: t });
+        let result;
 
-        const message = await MailMessage.create({
-            threadId: thread.id,
-            senderId: sender.id,
-            body,
-        }, { transaction: t });
-
-        // Build file records with fallbacks to handle different multer shapes / model column names
-        const fileRecords = files.map(file => {
-            const originalname = file.originalname || file.name || file.filename || null;
-            const filepath = file.path || (file.destination && file.filename ? `${file.destination}/${file.filename}` : null) || file.filepath || null;
-            const mimetype = file.mimetype || file.type || null;
-            const size = file.size || file.bytes || file.sizeBytes || null;
-
-            return {
-                messageId: message.id,
-                fileName: originalname,   // match DB column
-                filePath: filepath,       // match DB column
-                fileSize: size,           // match DB column
-                mimeType: mimetype        // match DB column
-            };
-        }).filter(r => r.fileName || r.filePath);
-
-        // then bulkCreate as before
-        if (fileRecords.length > 0) {
-            await sequelize.models.File.bulkCreate(fileRecords, { transaction: t });
+        // Kiểm tra email đích có phải external không
+        if (isExternalEmail(receiverEmail)) {
+            // Gửi external email: không tìm receiver, chỉ gửi qua SendGrid và log
+            result = await sendExternalEmail(
+                senderEmail,
+                receiverEmail,
+                subject,
+                body,
+                sender.id,
+                t
+            );
+        } else {
+            // Gửi internal email: tìm receiver trong CSDL, xử lý đầy đủ
+            result = await sendInternalEmail(
+                senderEmail,
+                receiverEmail,
+                subject,
+                body,
+                files,
+                sender,
+                t
+            );
         }
 
         await t.commit();
+        return result;
 
-        // --- realtime emit code unchanged ---
-        if (global._io && receiver.email) {
-            const senderEmailStr = decrypt(sender.getDataValue('email'));
-            const receiverEmailStr = decrypt(receiver.getDataValue('email'));
-
-            const payload = {
-                threadId: thread.id,
-                id: thread.id,
-                title: thread.title || '(Không có tiêu đề)',
-                class: thread.class || 'normal',
-                lastMessage: body,
-                lastSentAt: message.sentAt,
-                senderId: sender.id,
-                receiverId: receiver.id,
-                senderEmail: senderEmailStr,
-                receiverEmail: receiverEmailStr,
-                partnerEmail: receiverEmailStr,
-            };
-
-            global._io.to(receiverEmailStr).emit('newThread', payload);
-            global._io.to(senderEmailStr).emit('newThread', payload);
-        }
-
-        return { thread, message };
     } catch (err) {
         await t.rollback();
         throw err;
@@ -85,6 +64,7 @@ export async function createNewThreadAndMessage(senderEmail, receiverEmail, subj
 
 /// 💬 2. Gửi trong hội thoại đã có
 export async function sendMessageInThread(senderEmail, threadId, body, files = []) {
+    console.log(body);
     const t = await sequelize.transaction();
     try {
         const sender = await User.findOne({

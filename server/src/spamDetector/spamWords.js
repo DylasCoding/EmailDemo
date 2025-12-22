@@ -1,5 +1,5 @@
 // spamWords.js
-module.exports = {
+export default {
     free: 3,
     win: 3,
     money: 2,

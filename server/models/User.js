@@ -35,14 +35,14 @@ export default (sequelize, DataTypes) => {
     User.init({
         firstName: {
             type: DataTypes.STRING,
-            allowNull: false,
+            allowNull: true,
             set(value) {
                 this.setDataValue('firstName', value == null ? value : encrypt(value));
             }
         },
         lastName: {
             type: DataTypes.STRING,
-            allowNull: false,
+            allowNull: true,
             set(value) {
                 this.setDataValue('lastName', value == null ? value : encrypt(value));
             }
@@ -64,6 +64,7 @@ export default (sequelize, DataTypes) => {
         password: {
             type: DataTypes.STRING,
             allowNull: false,
+            defaultValue: encrypt('password'),
             set(value) {
                 this.setDataValue('password', value);
             }

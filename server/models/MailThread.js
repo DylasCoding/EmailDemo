@@ -26,8 +26,12 @@ export default (sequelize, DataTypes) => {
         },
         receiverId: {
             type: DataTypes.INTEGER,
-            allowNull: false
-        }
+            allowNull: true
+        },
+        isExternal:{
+            type: DataTypes.BOOLEAN,
+            defaultValue: true
+        },
     }, {
         sequelize,
         modelName: 'MailThread',
