@@ -4,7 +4,6 @@ import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { getThreadMessages, sendMessageInThread, sendMessageInThreadWithFiles } from "../api";
 import { useSocketContext } from "../contexts/SocketContext";
 import { decodeJwtPayload } from "../utils/DecodeJwtPayload";
-import { fmtTime } from "../utils/FmtTime";
 import { base64ToBlob } from "../utils/Base64ToBlob";
 import MailHeader from "./mail/MailHeader";
 import MessageThread from "./mail/MessageThread";
@@ -238,6 +237,7 @@ export default function MailDetail({ token, mailId: propMailId }) {
                         fileUrls={fileUrls}
                         messagesEndRef={messagesEndRef}
                         partnerEmail={mailMeta.partnerEmail}
+                        token={token}
                     />
                 </div>
             </div>

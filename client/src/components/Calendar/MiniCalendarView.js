@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight} from 'lucide-react';
 
 // Component: Mini Calendar
 export default function MiniCalendar({ currentDate, onDateChange }) {

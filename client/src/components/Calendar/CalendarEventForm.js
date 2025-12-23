@@ -14,15 +14,29 @@ const colorOptions = [
     { value: 6, rgb: '147,197,253', name: 'Blue' },
 ];
 
-export default function CreateEventModal({ isOpen, onClose, token, onEventCreated }) {
+export default function CreateEventModal({ isOpen, onClose, token, onEventCreated, initialData = null }) {
+
     const [formData, setFormData] = useState({
-        title: '',
+        title: initialData?.title || '',
         color: 0,
-        note: '',
-        start: '',
-        end: '',
-        date: new Date(),
+        note: initialData?.note || '',
+        start: initialData?.start || '',
+        end: initialData?.end || '',
+        date: initialData?.date || new Date(),
     });
+
+    React.useEffect(() => {
+        if (initialData) {
+            setFormData({
+                title: initialData.title || '',
+                color: 0,
+                note: initialData.note || '',
+                start: initialData.start || '',
+                end: initialData.end || '',
+                date: initialData.date || new Date(),
+            });
+        }
+    }, [initialData]);
 
     const [loading, setLoading] = useState(false);
 
@@ -199,7 +213,7 @@ export default function CreateEventModal({ isOpen, onClose, token, onEventCreate
                         <button
                             type="submit"
                             disabled={loading}
-                            className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg shadow-lg hover:scale-105 transition-all disabled:opacity-70"
+                            className="px-6 py-2 bg-gradient-to-r from-gray-500 via-gray-600 to-gray-600 text-white rounded-lg shadow-lg hover:scale-105 transition-all disabled:opacity-70"
                         >
                             {loading ? 'Saving...' : 'Save'}
                         </button>

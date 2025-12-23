@@ -7,9 +7,15 @@ import DescriptionIcon from "@mui/icons-material/Description";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import CloseIcon from "@mui/icons-material/Close";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
+import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import CreateEventModal from "../Calendar/CalendarEventForm";
 
-export default function MessageThread({ messages, fileUrls, messagesEndRef, partnerEmail }) {
+export default function MessageThread({ messages, fileUrls, messagesEndRef, partnerEmail, token }) {
     const [previewFile, setPreviewFile] = useState(null);
+
+    // State quản lý Modal Lịch
+    const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+    const [selectedAppointment, setSelectedAppointment] = useState(null);
 
     if (!messages || messages.length === 0) {
         return (
@@ -17,8 +23,8 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <EmailIcon className="text-gray-400 text-2xl" />
                 </div>
-                <p className="text-lg font-medium">Chưa có tin nhắn</p>
-                <p className="text-sm mt-1">Hãy bắt đầu cuộc trò chuyện!</p>
+                <p className="text-lg font-medium">No messages yet</p>
+                <p className="text-sm mt-1">Let's start a conversation!</p>
             </div>
         );
     }
@@ -35,6 +41,21 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
         if (bytes < 1024) return bytes + " B";
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
         return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    };
+
+    // Hàm xử lý khi click vào icon lịch
+    const handleCalendarClick = (appointment, messageBody) => {
+        // Ánh xạ dữ liệu từ AI về định dạng của Form Modal
+        const initialData = {
+            title: appointment.title || "Cuộc hẹn từ tin nhắn",
+            start: appointment.start || "08:00",
+            end: appointment.end || "09:00",
+            date: appointment.date ? new Date(appointment.date) : new Date(),
+            note: messageBody // Gắn nội dung tin nhắn vào Note để tiện theo dõi
+        };
+
+        setSelectedAppointment(initialData);
+        setIsEventModalOpen(true);
     };
 
     return (
@@ -69,10 +90,12 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                     const hasBody = typeof m.body === "string" && m.body.trim().length > 0;
 
                     return (
-                        <div key={m.id || m.sentAt || idx} className="p-6 hover:bg-gray-50 transition-colors">
+                        /* Thêm class 'group' để nhận diện hover cho cả khối tin nhắn */
+                        <div key={m.id || m.sentAt || idx} className="p-6 hover:bg-gray-50 transition-colors group">
+                            {/* TRƯỜNG HỢP: TIN NHẮN CỦA BẠN */}
                             {m.isMine ? (
                                 <div className="flex justify-start">
-                                    <div className="max-w-2xl">
+                                    <div className="max-w-2xl w-full">
                                         <div className="flex items-start space-x-3 mb-2">
                                             <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-700 text-white font-semibold flex-shrink-0">
                                                 B
@@ -84,8 +107,20 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                                         </div>
 
                                         {hasBody && (
-                                            <div className="bg-gray-900 text-white rounded-lg px-4 py-3 text-left inline-block border border-black max-w-[80%] break-words">
+                                            /* Đã xóa bg-gray-900 và border-black */
+                                            <div className="text-gray-800 py-1 text-left block max-w-full break-words relative">
                                                 <div className="whitespace-pre-wrap leading-relaxed">{m.body}</div>
+
+                                                {/* Hiển thị Icon Lịch nếu có appointment và đang hover (group-hover) */}
+                                                {m.appointment && (
+                                                    <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer inline-block">
+                                                        <CalendarTodayIcon
+                                                            className="text-gray-600 hover:text-black"
+                                                            fontSize="small"
+                                                            onClick={() => handleCalendarClick(m.appointment)}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -175,8 +210,9 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                                     </div>
                                 </div>
                             ) : (
+                                /* TRƯỜNG HỢP: TIN NHẮN ĐỐI TÁC */
                                 <div className="flex justify-start">
-                                    <div className="max-w-2xl">
+                                    <div className="max-w-2xl w-full">
                                         <div className="flex items-start space-x-3 mb-2">
                                             <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-400 text-white font-semibold flex-shrink-0">
                                                 N
@@ -190,10 +226,22 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                                         </div>
 
                                         {hasBody && (
-                                            <div className="bg-white border border-black rounded-lg px-4 py-3 inline-block max-w-[80%] break-words">
-                                                <div className="whitespace-pre-wrap leading-relaxed text-gray-800">
+                                            /* Đã xóa bg-white và border-black */
+                                            <div className="text-gray-800 py-1 block max-w-full break-words relative">
+                                                <div className="whitespace-pre-wrap leading-relaxed">
                                                     {m.body}
                                                 </div>
+
+                                                {/* Hiển thị Icon Lịch */}
+                                                {m.appointment && (
+                                                    <div className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer inline-block">
+                                                        <CalendarTodayIcon
+                                                            className="text-gray-600 hover:text-black"
+                                                            fontSize="small"
+                                                            onClick={() => handleCalendarClick(m.appointment)}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -288,6 +336,19 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                 })}
                 <div ref={messagesEndRef} />
             </div>
+
+            {isEventModalOpen && (
+                <CreateEventModal
+                    isOpen={isEventModalOpen}
+                    onClose={() => setIsEventModalOpen(false)}
+                    token={token}
+                    // Truyền dữ liệu ban đầu vào Modal
+                    initialData={selectedAppointment}
+                    onEventCreated={() => {
+                        alert("Create event successfully!");
+                    }}
+                />
+            )}
 
             {previewFile && (
                 <div

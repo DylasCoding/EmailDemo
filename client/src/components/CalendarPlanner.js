@@ -1,9 +1,8 @@
 // client/src/components/CalendarPlanner.js
-import React, {useState, useMemo, useCallback, useEffect} from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import React, {useState,useCallback, useEffect} from 'react';
 import WeekCalendarView from './Calendar/WeekCalendarView';
 import MiniCalendar from './Calendar/MiniCalendarView';
-import { createCalendarEvent, getCalendarEvents, getWeekCalendarEvents } from '../api';
+import { getCalendarEvents} from '../api';
 
 // Component: Calendar List
 function EventList({ mockEvents }) {

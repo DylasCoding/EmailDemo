@@ -78,6 +78,12 @@ export const getThreadMessages = async (token, threadId) => {
             senderEmail: typeof m.senderEmail === "string" ? await tryDecryptValue(m.senderEmail) : m.senderEmail,
             body: typeof m.body === "string" ? await tryDecryptValue(m.body) : m.body,
             subject: typeof m.subject === "string" ? await tryDecryptValue(m.subject) : m.subject,
+            appointment : m.appointment ? {
+                title: m.appointment.title,
+                date: m.appointment.date,
+                start: m.appointment.start,
+                end: m.appointment.end
+            } : null,
             files: Array.isArray(m.files)
                 ? m.files.map(f => ({
                     id: f.id,
@@ -90,6 +96,8 @@ export const getThreadMessages = async (token, threadId) => {
             sentAt: await tryDecryptDate(m.sentAt),
         }))
     );
+
+    console.log(messages);
 
     return { ...res, data: messages };
 };

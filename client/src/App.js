@@ -20,26 +20,6 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import { initSocket, disconnectSocket } from "./socket";
 import { SocketProvider } from "./contexts/SocketContext";
 
-function CurrentTabBadge() {
-    const location = useLocation();
-    const mapPathToName = (path) => {
-        if (path.startsWith("/mail/thread")) return "Chi tiết thư";
-        if (path === "/inbox") return "Hộp thư";
-        if (path === "/send") return "Soạn thư";
-        if (path === "/login") return "Đăng nhập";
-        if (path === "/register") return "Đăng ký";
-        return "Trang chính";
-    };
-    const name = mapPathToName(location.pathname);
-    return (
-        <div className="mb-4">
-            <span className="inline-block px-3 py-1 bg-amber-50 text-gray-800 text-sm rounded-full border border-gray-200 shadow-sm">
-                {name}
-            </span>
-        </div>
-    );
-}
-
 export default function App() {
     const [token, setToken] = useState("");
     const [user, setUser] = useState(null);

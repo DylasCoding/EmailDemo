@@ -15,6 +15,7 @@ import {isSpam} from '../spamDetector/spamDetector.js';
 import {sendEmailWithSendGrid} from "./sendGridService.js";
 import {findUserByEmail, isExternalEmail, sendExternalEmail, sendInternalEmail} from './Helper/emailHelpers.js';
 import {findGmailThreadIdByToken, sendReplyViaGmail} from "./Helper/gmailHelper.js";
+import {detectAppointmentsBatch} from "./ai_appointment.service.js";
 
 // 📨1 Main Function: Soạn thư mới (tạo thread + message)
 export async function createNewThreadAndMessage(
@@ -330,7 +331,21 @@ export async function getConversationMessagesByThread(email, threadId) {
         include: [{ model: sequelize.models.File, as: 'files', required: false }]
     });
 
-    const results = await Promise.all(messages.map(async m => {
+    // 1. Chuẩn bị danh sách body đã decrypt để gửi cho AI
+    const decryptedTexts = messages.map(m => decrypt(m.body));
+
+    // 2. Gọi AI để kiểm tra lịch hẹn hàng loạt
+    let aiResults = [];
+    try {
+        aiResults = await detectAppointmentsBatch(decryptedTexts);
+    } catch (error) {
+        console.error("AI Service Error:", error);
+        // Nếu AI lỗi, vẫn tiếp tục trả về tin nhắn nhưng không có thông tin lịch hẹn
+    }
+
+    // 3. Xử lý tin nhắn và đính kèm file + dữ liệu AI
+    const results = await Promise.all(messages.map(async (m, index) => {
+        // Xử lý tệp đính kèm
         const files = await Promise.all((m.files || []).map(async f => {
             if (!f.filePath) return null;
             try {
@@ -343,17 +358,25 @@ export async function getConversationMessagesByThread(email, threadId) {
                     fileSize: f.fileSize,
                     dataBase64: buf.toString('base64')
                 };
-            } catch (err) {
-                // if file missing or unreadable, skip it
-                return null;
-            }
+            } catch (err) { return null; }
         }));
+
+        // Lấy kết quả AI tương ứng với vị trí (index) của tin nhắn
+        const aiInfo = aiResults[index];
+
         return {
             id: m.id,
-            body: m.body,
+            body: m.body, // Giữ nguyên nội dung cũ (mã hóa hoặc gốc) theo yêu cầu
             senderId: m.senderId,
             sentAt: m.sentAt,
-            files: files.filter(Boolean)
+            files: files.filter(Boolean),
+            // Chỉ thêm trường appointment nếu AI phát hiện là cuộc hẹn
+            appointment: (aiInfo && aiInfo.isAppointment) ? {
+                start: aiInfo.details.startTime,
+                end: aiInfo.details.endTime,
+                title: aiInfo.details.title,
+                date: aiInfo.details.date
+            } : null
         };
     }));
 
