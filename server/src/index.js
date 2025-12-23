@@ -47,7 +47,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/mail', mailRoutes);
 app.use('/api/files', uploadRoutes);
-app.use('/calendar',calendarRoutes)
+app.use('/api/calendar', calendarRoutes)
 
 // ======= HTTP + SOCKET SERVER =======
 const server = createServer(app);

@@ -45,7 +45,7 @@ export default (sequelize, DataTypes) => {
         sequelize,
         modelName: 'CalendarEvent',
         tableName: 'CalendarEvents',
-        timestamps: true
+        timestamps: false
     });
 
     return CalendarEvent;

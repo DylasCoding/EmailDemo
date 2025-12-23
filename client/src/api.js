@@ -150,3 +150,34 @@ export const sendMessageInThreadWithFiles = (token, threadId, formData, onUpload
         onUploadProgress,
     });
 }
+
+export const createCalendarEvent = (token, data)=>{
+    const { title, color, note, start, end, date } = data;
+    console.log(title, color, note, start, end, date);
+    return api.post('/calendar/events', { title, color, note, start, end, date }, {
+        headers: authHeaders(token)
+    });
+}
+export const getCalendarEvents = (token)=>{
+    return api.get('/calendar/events', {
+        headers: authHeaders(token)
+    });
+}
+export const getWeekCalendarEvents = (token, weekStartDate)=>{
+    return api.get('/calendar/events/week', {
+        headers: authHeaders(token),
+        params: { weekStartDate }
+    });
+}
+
+export const updateCalendarEvent = (token, eventId, updates)=>{
+    return api.put(`/calendar/update/events/${eventId}`, updates, {
+        headers: authHeaders(token)
+    });
+}
+
+export const deleteCalendarEvent = (token,eventId)=>{
+    return api.delete(`/calendar/delete/events/${eventId}`, {
+        headers: authHeaders(token)
+    });
+}

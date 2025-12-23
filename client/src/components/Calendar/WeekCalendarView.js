@@ -1,11 +1,15 @@
 // client/src/components/Calendar/WeekCalendarView.js
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import CreateEventModal from './CalendarEventForm';
+import EditEventModal from './EditEventModal';
 
 // Component: Week Calendar View
-export default function WeekCalendarView({ currentDate, weekDays, mockEvents, onPrevWeek, onNextWeek }) {
+export default function WeekCalendarView({ currentDate, weekDays, mockEvents, onPrevWeek, onNextWeek, token, onEventCreated }) {
     const weekDayNames = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
     const hours = Array.from({ length: 24 }, (_, i) => i);
+
+    console.log("Week calendar token:", token);
 
     // colorMap is now an array where index corresponds to mockEvents.color numeric value
     const colorMap = [
@@ -17,6 +21,8 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
         '248,113,113', // 5 - red-400
         '147,197,253', // 6 - blue
     ];
+
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     const getEventStyle = (start, end) => {
         const [startHour, startMin] = start.split(':').map(Number);
@@ -55,6 +61,14 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
         return date.toDateString() === today.toDateString();
     };
 
+    const [selectedEvent, setSelectedEvent] = useState(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+    const handleEventClick = (event) => {
+        setSelectedEvent(event);
+        setIsEditModalOpen(true);
+    };
+
     return (
         <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-lg border border-white/20 p-6">
             <div className="flex items-center justify-between mb-6">
@@ -72,7 +86,10 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
 
                 <div className="flex items-center space-x-4">
                     <span className="text-sm text-gray-600 font-medium">Week {getWeekNumber(currentDate)}</span>
-                    <button className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-gray-500 via-gray-600 to-gray-600 text-white rounded-xl shadow-lg hover:scale-105 transition-all">
+                    <button
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-gray-500 via-gray-600 to-gray-600 text-white rounded-xl shadow-lg hover:scale-105 transition-all"
+                    >
                         <Plus size={20} />
                         <span className="font-semibold">Create</span>
                     </button>
@@ -115,21 +132,16 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
                                     })
                                     .map(event => {
                                         const style = getEventStyle(event.start, event.end);
-                                        // lookup rgb by numeric index, fallback to black
                                         const rgb = colorMap[event.color] || '0,0,0';
                                         return (
                                             <div
-                                                className="
-                                                absolute left-1 right-1 p-2
-                                                rounded-lg
-                                                shadow-sm hover:shadow-md transition-shadow
-                                                cursor-pointer"
+                                                key={event.id}
+                                                onClick={() => handleEventClick(event)} // Bấm vào để mở modal
+                                                className="absolute left-1 right-1 p-2 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                                                 style={{
                                                     ...style,
                                                     backgroundColor: `rgba(${rgb}, 0.15)`,
                                                     borderLeft: `4px solid rgb(${rgb})`,
-                                                    borderTopLeftRadius: 0,
-                                                    borderBottomLeftRadius: 0,
                                                 }}
                                             >
                                                 <div className="text-xs font-semibold text-gray-800 mb-1">
@@ -146,6 +158,21 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
                     );
                 })}
             </div>
+
+            <EditEventModal
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
+                token={token}
+                event={selectedEvent}
+                onEventUpdated={onEventCreated} // Dùng chung hàm refresh data
+            />
+
+            <CreateEventModal
+                isOpen={isCreateModalOpen}
+                onClose={() => setIsCreateModalOpen(false)}
+                token={token}
+                onEventCreated={onEventCreated} // để parent refresh nếu cần
+            />
         </div>
     );
 }

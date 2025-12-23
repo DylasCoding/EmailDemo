@@ -8,6 +8,7 @@ export async function createEvent(req, res) {
         const event = await createCalendarEvent(userId, title, color, note, start, end, date);
         res.json({success: true, event});
     } catch (err) {
+        console.error("Lỗi chi tiết tại Backend:", err); // THÊM DÒNG NÀY
         res.status(400).json({success: false, error: err.message});
     }
 }
@@ -46,6 +47,22 @@ export async function updateEvent(req, res) {
         const updatedEvent = await updateCalendarEvent(eventId, updates);
         res.json({success: true, event: updatedEvent});
     } catch (err) {
+        res.status(400).json({success: false, error: err.message});
+    }
+}
+
+export async function deleteEvent(req, res) {
+    try {
+        const {eventId} = req.params;
+        const event = await updateCalendarEvent(eventId, {});
+
+        if (!event) {
+            return res.status(404).json({success: false, error: 'Event not found'});
+        }
+        await event.destroy();
+        res.json({success: true});
+    }
+    catch (err) {
         res.status(400).json({success: false, error: err.message});
     }
 }

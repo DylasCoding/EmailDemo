@@ -1,8 +1,9 @@
 // client/src/components/CalendarPlanner.js
-import React, { useState } from 'react';
+import React, {useState, useMemo, useCallback, useEffect} from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import WeekCalendarView from './Calendar/WeekCalendarView';
 import MiniCalendar from './Calendar/MiniCalendarView';
+import { createCalendarEvent, getCalendarEvents, getWeekCalendarEvents } from '../api';
 
 // Component: Calendar List
 function EventList({ mockEvents }) {
@@ -87,91 +88,34 @@ function EventList({ mockEvents }) {
     );
 }
 
-
 // Component chính: Calendar Planner
-export default function CalendarPlanner() {
+export default function CalendarPlanner({ token }) {
     const today = new Date();
     const [currentDate, setCurrentDate] = useState(today);
+    const [events, setEvents] = useState([]); // Dùng state để lưu data thật
+    const [loading, setLoading] = useState(false);
 
-    // Mock data - có thể thay thế từ API sau này
-    // Tạo events cho tuần hiện tại
-    const getWeekStart = (date) => {
-        const d = new Date(date);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-        return new Date(d.setDate(diff));
-    };
+    // Hàm lấy dữ liệu từ API
+    const fetchEvents = useCallback(async () => {
+        if (!token) return;
+        setLoading(true);
+        try {
+            const response = await getCalendarEvents(token);
+            // Giả định response.data chứa array events
+            setEvents(response.data.events || response.data);
+        } catch (err) {
+            console.error("Failed to fetch events:", err);
+        } finally {
+            setLoading(false);
+        }
+    }, [token]);
 
-    const weekStart = getWeekStart(today);
+    // Gọi API khi component mount hoặc token thay đổi
+    useEffect(() => {
+        fetchEvents();
+    }, [fetchEvents]);
 
-    // color now uses numeric indices that map to WeekCalendarView's color array
-    const mockEvents = [
-        {
-            id: 1,
-            title: "Product Design Course",
-            color: 0, // green
-            start: "09:30",
-            end: "12:00",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 1), // Tuesday
-        },
-        {
-            id: 2,
-            title: "Conversational Interview",
-            color: 1, // purple-300
-            start: "12:30",
-            end: "14:00",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 1), // Tuesday
-        },
-        {
-            id: 3,
-            title: "Team Meeting",
-            color: 2, // purple-400
-            start: "09:00",
-            end: "11:00",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 2), // Wednesday
-        },
-        {
-            id: 4,
-            title: "App Design",
-            color: 0, // green
-            start: "13:00",
-            end: "15:30",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 2), // Wednesday
-        },
-        {
-            id: 5,
-            title: "Frontend development",
-            color: 3, // cyan
-            start: "10:00",
-            end: "13:00",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 3), // Thursday
-        },
-        {
-            id: 6,
-            title: "Morning Standup",
-            color: 4, // red-300
-            start: "08:00",
-            end: "09:00",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()), // Monday
-        },
-        {
-            id: 7,
-            title: "Code Review",
-            color: 6, // blue
-            start: "15:00",
-            end: "17:00",
-            date: new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 4), // Friday
-        },
-        {
-            id: 8,
-            title: "Lunch Meeting",
-            color: 5, // red-400
-            start: "12:00",
-            end: "13:30",
-            date: today, // Hôm nay
-        },
-    ];
-
+    // Tính toán số ngày trong tuần dựa trên currentDate
     const getWeekDays = (date) => {
         const days = [];
         const current = new Date(date);
@@ -189,29 +133,27 @@ export default function CalendarPlanner() {
 
     const weekDays = getWeekDays(currentDate);
 
-    const handleDateChange = (newDate) => {
-        setCurrentDate(newDate);
-    };
-
+    // Handlers
+    const handleDateChange = (newDate) => setCurrentDate(newDate);
     const goToPrevWeek = () => {
-        const newDate = new Date(currentDate);
-        newDate.setDate(newDate.getDate() - 7);
-        setCurrentDate(newDate);
+        const d = new Date(currentDate);
+        d.setDate(d.getDate() - 7);
+        setCurrentDate(d);
+    };
+    const goToNextWeek = () => {
+        const d = new Date(currentDate);
+        d.setDate(d.getDate() + 7);
+        setCurrentDate(d);
     };
 
-    const goToNextWeek = () => {
-        const newDate = new Date(currentDate);
-        newDate.setDate(newDate.getDate() + 7);
-        setCurrentDate(newDate);
+    // Khi tạo xong event, gọi lại hàm fetch để cập nhật danh sách
+    const handleEventCreated = () => {
+        fetchEvents();
     };
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 p-6">
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-20 left-10 w-64 h-64 bg-gradient-to-r from-blue-200/30 to-purple-200/30 rounded-full blur-3xl"></div>
-                <div className="absolute bottom-20 right-10 w-80 h-80 bg-gradient-to-r from-purple-200/30 to-pink-200/30 rounded-full blur-3xl"></div>
-            </div>
-
+            {/* Background decor giữ nguyên */}
             <div className="relative max-w-7xl mx-auto">
                 <div className="grid grid-cols-12 gap-6">
                     <div className="col-span-3 space-y-6">
@@ -219,17 +161,24 @@ export default function CalendarPlanner() {
                             currentDate={currentDate}
                             onDateChange={handleDateChange}
                         />
-                        <EventList mockEvents={mockEvents} />
+                        {/* Truyền events thật vào list bên trái */}
+                        <EventList mockEvents={events} />
                     </div>
 
                     <div className="col-span-9">
-                        <WeekCalendarView
-                            currentDate={currentDate}
-                            weekDays={weekDays}
-                            mockEvents={mockEvents}
-                            onPrevWeek={goToPrevWeek}
-                            onNextWeek={goToNextWeek}
-                        />
+                        {loading ? (
+                            <div className="flex items-center justify-center h-64">Đang tải...</div>
+                        ) : (
+                            <WeekCalendarView
+                                currentDate={currentDate}
+                                weekDays={weekDays}
+                                mockEvents={events} // Truyền events thật vào view chính
+                                onPrevWeek={goToPrevWeek}
+                                onNextWeek={goToNextWeek}
+                                token={token}
+                                onEventCreated={handleEventCreated}
+                            />
+                        )}
                     </div>
                 </div>
             </div>

@@ -50,6 +50,7 @@ export const MailMessage = db.MailMessage;
 export const MailThreadStatus = db.MailThreadStatus;
 export const File = db.File;
 export const ExternalEmailLog = db.ExternalEmailLog;
+export const CalendarEvent = db.CalendarEvent;
 export const sequelizeInstance = sequelize;
 
 export default db;
