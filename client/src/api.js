@@ -159,6 +159,8 @@ export const sendMessageInThreadWithFiles = (token, threadId, formData, onUpload
     });
 }
 
+///================= Calendar Management =================//
+
 export const createCalendarEvent = (token, data)=>{
     const { title, color, note, start, end, date } = data;
     console.log(title, color, note, start, end, date);
@@ -186,6 +188,47 @@ export const updateCalendarEvent = (token, eventId, updates)=>{
 
 export const deleteCalendarEvent = (token,eventId)=>{
     return api.delete(`/calendar/delete/events/${eventId}`, {
+        headers: authHeaders(token)
+    });
+}
+
+///================= Trash Management =================//
+export const getAllTrashThreads = async (token) => {
+    return api.get('/trash/get-all', {
+        headers: authHeaders(token)
+    }).then(res => {
+        // Kiểm tra xem res.data.trashThreads có tồn tại và là mảng không
+        if (res.data && Array.isArray(res.data.trashThreads)) {
+            res.data.trashThreads = res.data.trashThreads.map(thread => ({
+                ...thread,
+                // Giải mã các trường bị mã hóa
+                title: tryDecryptValue(thread.title) || thread.title || '(No subject)',
+                lastMessage: tryDecryptValue(thread.lastMessage) || thread.lastMessage || ''
+            }));
+        }
+
+        console.log(">>> Dữ liệu Trash sau khi giải mã:", res.data);
+        return res;
+    }).catch(err => {
+        console.error(">>> Lỗi API Trash:", err);
+        throw err;
+    });
+};
+
+export const addThreadToTrash = (token, threadId) => {
+    return api.post(`/trash/add-to-trash/${threadId}`, {}, {
+        headers: authHeaders(token)
+    });
+}
+
+export const deleteThreadPermanently = (token, threadId) => {
+    return api.post(`/trash/delete/${threadId}`, {}, {
+        headers: authHeaders(token)
+    });
+}
+
+export const restoreThreadFromTrash = (token, threadId) => {
+    return api.post(`/trash/restore/${threadId}`, {}, {
         headers: authHeaders(token)
     });
 }

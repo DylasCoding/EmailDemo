@@ -277,7 +277,23 @@ export async function getConversations(email) {
         order: [['updatedAt', 'DESC']]
     });
 
-    return threads.map(t => {
+    // Exclude threads that the user has deleted (present in UserDeleteThread)
+    const threadIds = threads.map(t => t.id);
+    let deletedIds = new Set();
+    if (threadIds.length > 0) {
+        const deletedRows = await sequelize.models.UserDeleteThread.findAll({
+            where: {
+                threadId: threadIds,
+                userId: user.id
+            },
+            attributes: ['threadId']
+        });
+        deletedIds = new Set(deletedRows.map(d => d.threadId));
+    }
+
+    const visibleThreads = threads.filter(t => !deletedIds.has(t.id));
+
+    return visibleThreads.map(t => {
         const partner = (t.senderId === user.id) ? t.receiver : t.sender;
         const lastMsg = t.messages?.[0];
 

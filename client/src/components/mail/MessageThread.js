@@ -98,10 +98,10 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                                     <div className="max-w-2xl w-full">
                                         <div className="flex items-start space-x-3 mb-2">
                                             <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-700 text-white font-semibold flex-shrink-0">
-                                                B
+                                                Y
                                             </div>
                                             <div>
-                                                <div className="font-semibold text-gray-900">Bạn</div>
+                                                <div className="font-semibold text-gray-900">You</div>
                                                 <div className="text-sm text-gray-500">{fmtTime(m.sentAt)}</div>
                                             </div>
                                         </div>
@@ -214,12 +214,12 @@ export default function MessageThread({ messages, fileUrls, messagesEndRef, part
                                 <div className="flex justify-start">
                                     <div className="max-w-2xl w-full">
                                         <div className="flex items-start space-x-3 mb-2">
-                                            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-400 text-white font-semibold flex-shrink-0">
-                                                N
+                                            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-amber-200 text-white font-semibold flex-shrink-0">
+                                                T
                                             </div>
                                             <div>
                                                 <div className="font-semibold text-gray-900">
-                                                    {partnerEmail || m.from || m.fromEmail || 'Người gửi'}
+                                                    {partnerEmail || m.from || m.fromEmail || 'Sender'}
                                                 </div>
                                                 <div className="text-sm text-gray-500">{fmtTime(m.sentAt)}</div>
                                             </div>

@@ -11,6 +11,7 @@ import mailRoutes from './routes/mailRoutes.js';
 import uploadRoutes from "./routes/uploadRoutes.js";
 import calendarRoutes from './routes/calendarRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import trashRoutes from './routes/trashRoutes.js';
 import { sequelizeInstance as sequelize } from '../models/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -48,6 +49,7 @@ app.use('/api/mail', mailRoutes);
 app.use('/api/files', uploadRoutes);
 app.use('/api/calendar', calendarRoutes)
 app.use('/api/ai', aiRoutes);
+app.use('/api/trash',trashRoutes);
 
 // ======= HTTP + SOCKET SERVER =======
 const server = createServer(app);

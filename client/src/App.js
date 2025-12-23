@@ -8,6 +8,8 @@ import ExitToAppIcon from "@mui/icons-material/ExitToApp";
 import StarIcon from "@mui/icons-material/Star";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import Trash from "./components/Trash";
 
 import Register from "./components/Register";
 import Login from "./components/Login";
@@ -138,7 +140,7 @@ export default function App() {
                                 <div>
                                     <NavLink to="/inbox" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
                                         <EmailIcon fontSize="small" />
-                                        <span>Hộp thư</span>
+                                        <span>Inbox</span>
                                     </NavLink>
 
                                     {/* Subtabs under Hộp thư */}
@@ -147,7 +149,7 @@ export default function App() {
 
                                 <NavLink to="/send" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
                                     <PersonIcon fontSize="small" />
-                                    <span>Soạn thư</span>
+                                    <span>Compose</span>
                                 </NavLink>
 
                                 <NavLink to="/calendar" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
@@ -155,14 +157,19 @@ export default function App() {
                                     <span>Calendar</span>
                                 </NavLink>
 
+                                <NavLink to="/trash" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
+                                    <DeleteOutlineIcon fontSize="small" />
+                                    <span>Trash</span>
+                                </NavLink>
+
                                 {!token ? (
                                     <>
                                         <NavLink to="/login" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
                                             <ExitToAppIcon fontSize="small" />
-                                            <span>Đăng nhập</span>
+                                            <span>Login</span>
                                         </NavLink>
                                         <NavLink to="/register" className={({ isActive }) => `${navItemClasses} ${isActive ? activeClasses : inactiveClasses}`}>
-                                            <span className="ml-1">Đăng ký</span>
+                                            <span className="ml-1">Register</span>
                                         </NavLink>
                                     </>
                                 ) : (
@@ -209,6 +216,14 @@ export default function App() {
                                         element={
                                             <ProtectedRoute token={token}>
                                                 <CalendarPlanner token={token} />
+                                            </ProtectedRoute>
+                                        }
+                                    />
+                                    <Route
+                                        path="/trash"
+                                        element={
+                                            <ProtectedRoute token={token}>
+                                                <Trash token={token} />
                                             </ProtectedRoute>
                                         }
                                     />

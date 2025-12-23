@@ -1,43 +1,104 @@
-// javascript
 import React, { useEffect, useState, useRef } from "react";
 import { useSocketContext } from "../contexts/SocketContext";
 import { useNavigate, useLocation } from "react-router-dom";
-import { getConversations, updateThreadStatus } from "../api";
+import {addThreadToTrash, getConversations, updateThreadStatus} from "../api";
 import ChatIcon from "@mui/icons-material/Chat";
 import EmailIcon from "@mui/icons-material/Email";
 import StarIcon from "@mui/icons-material/Star";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+// Import thêm các icon và component cần thiết
+import MoreVertIcon from "@mui/icons-material/MoreVert";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ReportGmailerrorredIcon from "@mui/icons-material/ReportGmailerrorred";
+import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import IconButton from "@mui/material/IconButton";
 
 export default function Inbox({ token, currentUserId }) {
     const [conversations, setConversations] = useState([]);
     const navigate = useNavigate();
     const location = useLocation();
     const { subscribeNewMail, subscribeNewThread } = useSocketContext();
-    // initialize filter from hash
+
+    // Menu state
+    const [anchorEl, setAnchorEl] = useState(null);
+    const [selectedThread, setSelectedThread] = useState(null);
+    const open = Boolean(anchorEl);
+
     const initialFilter = (() => {
         const h = window.location.hash || "";
         if (h === "#starred") return "star";
         if (h === "#spam") return "spam";
         return "inbox";
     })();
-    const [filter, setFilter] = useState(initialFilter); // inbox | star | spam
+    const [filter, setFilter] = useState(initialFilter);
 
     const headerRef = useRef(null);
-    const listContainerRef = useRef(null);
     const [listHeight, setListHeight] = useState("60vh");
     const [scale, setScale] = useState(1);
+
+    // Xử lý mở menu 3 chấm
+    const handleMenuOpen = (event, thread) => {
+        event.stopPropagation(); // Ngăn chặn sự kiện click vào row để mở mail
+        setAnchorEl(event.currentTarget);
+        setSelectedThread(thread);
+    };
+
+    const handleMenuClose = () => {
+        setAnchorEl(null);
+        setSelectedThread(null);
+    };
+
+    // Hàm cập nhật trạng thái chung (Spam/Trash/Star)
+    const handleUpdateStatus = async (newStatus) => {
+        if (!token || !selectedThread?.threadId) return;
+
+        try {
+            if (newStatus === "trash") {
+                // Sử dụng API chuyên biệt cho thùng rác theo yêu cầu của bạn
+                await addThreadToTrash(token, selectedThread.threadId);
+            } else {
+                // Các trạng thái khác (star, spam, normal) dùng API chung
+                await updateThreadStatus(token, selectedThread.threadId, newStatus);
+            }
+
+            // Cập nhật UI: Loại bỏ thread khỏi danh sách hiện tại hoặc cập nhật class
+            setConversations((prev) =>
+                prev.map((conv) =>
+                    conv.threadId === selectedThread.threadId
+                        ? { ...conv, class: newStatus }
+                        : conv
+                )
+            );
+
+            handleMenuClose();
+        } catch (err) {
+            console.error(`Lỗi khi chuyển trạng thái sang ${newStatus}:`, err);
+            alert("Có lỗi xảy ra, vui lòng thử lại.");
+        }
+    };
+    // Hàm xử lý riêng cho Star (Toggle: nếu đang star thì thành normal và ngược lại)
+    const handleToggleStar = async (e, thread) => {
+        e.stopPropagation(); // Quan trọng: Tránh mở chi tiết mail
+        const nextClass = thread.class === "star" ? "normal" : "star";
+
+        try {
+            await updateThreadStatus(token, thread.threadId, nextClass);
+            setConversations((prev) =>
+                prev.map((conv) =>
+                    conv.threadId === thread.threadId ? { ...conv, class: nextClass } : conv
+                )
+            );
+        } catch (err) {
+            console.error("Lỗi cập nhật Star:", err);
+        }
+    };
 
     useEffect(() => {
         if (!token) return;
         getConversations(token)
             .then((res) => setConversations(res.data || []))
-            .catch((err) => {
-                console.error(
-                    "getConversations failed:",
-                    err.response?.status,
-                    err.response?.data || err.message
-                );
-            });
+            .catch((err) => console.error("getConversations failed:", err));
     }, [token]);
 
     useEffect(() => {
@@ -184,8 +245,7 @@ export default function Inbox({ token, currentUserId }) {
     return (
         <div className="w-full py-4">
             <div className="w-full max-w-none lg:max-w-6xl mx-auto px-4">
-
-                {/* Header (flat, white with cream context) */}
+                {/* Header */}
                 <div ref={headerRef} className="bg-white border border-white-100 p-6 mb-4">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
@@ -193,140 +253,90 @@ export default function Inbox({ token, currentUserId }) {
                                 <ChatIcon className="text-white" fontSize="large" />
                             </div>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900">Hộp thư</h1>
-                                <p className="text-sm text-gray-500">{filtered.length} cuộc trò chuyện</p>
+                                <h1 className="text-2xl font-bold text-gray-900">Inbox</h1>
+                                <p className="text-sm text-gray-500">{filtered.length} conversations</p>
                             </div>
                         </div>
-
-                        <select
-                            value={filter}
-                            onChange={(e) => {
-                                const v = e.target.value;
-                                setFilter(v);
-                                if (v === "star") window.location.hash = "#starred";
-                                else if (v === "spam") window.location.hash = "#spam";
-                                else window.location.hash = "";
-                            }}
-                            className="border border-amber-200 bg-white rounded-xl px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400 transition"
-                        >
-                            <option value="inbox">📥 Hộp thư</option>
-                            <option value="star">⭐ Star</option>
-                            <option value="spam">⚠️ Spam</option>
-                        </select>
                     </div>
                 </div>
 
-                {/* Scrollable list area (cards sit flat on cream background) */}
-                <div
-                    ref={listContainerRef}
-                    className="bg-transparent overflow-y-auto"
-                    style={{ maxHeight: listHeight, padding: "6px" }}
-                >
+                {/* List Area */}
+                <div className="overflow-y-auto" style={{ maxHeight: listHeight, padding: "6px" }}>
                     {filtered.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-24 h-24 bg-gradient-to-r from-amber-50 to-white-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <EmailIcon className="text-amber-400 text-4xl" />
-                            </div>
-                            <h3 className="text-xl font-semibold text-gray-700 mb-2">Không có cuộc trò chuyện</h3>
-                            <p className="text-gray-500 mb-6">Hãy gửi email đầu tiên để bắt đầu kết nối</p>
-                        </div>
+                        <div className="text-center py-16 text-gray-400 font-medium">Hộp thư trống</div>
                     ) : (
-                        <div className="space-y-3" style={{ transformOrigin: "top left" }}>
+                        <div className="space-y-2">
                             {filtered.map((c) => {
                                 const isRead = isConversationRead(c);
+                                const isStarred = c.class === "star";
+                                const isSpam = c.class === "spam"; // Kiểm tra xem có phải spam không
 
                                 return (
                                     <div
-                                        key={c.threadId || c.partnerEmail}
+                                        key={c.threadId}
                                         onClick={() => openConversation(c.threadId, c.partnerEmail, c.title)}
-                                        className="group cursor-pointer p-4 bg-white border border-white-100 hover:border-amber-200 transition-all duration-200"
-                                        style={{
-                                            borderRadius: "8px",
-                                            boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-                                            transform: `scale(${scale})`,
-                                            transformOrigin: "top left",
-                                            opacity: isRead ? 0.7 : 1
-                                        }}
+                                        className="group relative flex items-center p-3 bg-white border border-gray-100 hover:border-amber-300 hover:shadow-md transition-all duration-200 rounded-xl"
+                                        style={{ opacity: isRead ? 0.8 : 1 }}
                                     >
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-center space-x-3 flex-1 min-w-0">
-                                                <div
-                                                    className="w-10 h-10 bg-gradient-to-r from-gray-900 to-black rounded-full flex items-center justify-center shadow-md"
-                                                    style={{ opacity: isRead ? 0.6 : 1 }}
-                                                >
-                                                    <span className="text-amber-50 font-semibold text-sm">
-                                                        {c.partnerEmail?.charAt(0).toUpperCase()}
-                                                    </span>
+                                        {/* 1. Icon đầu dòng: Warning nếu là Spam, Star nếu là bình thường */}
+                                        <div
+                                            className="mr-3 flex items-center justify-center w-6 h-6"
+                                            onClick={(e) => {
+                                                // Nếu là spam, có thể không cho toggle star hoặc toggle tùy ý bạn
+                                                if (!isSpam) handleToggleStar(e, c);
+                                                else e.stopPropagation();
+                                            }}
+                                        >
+                                            {isSpam ? (
+                                                // Hiển thị Warning màu đỏ khi là Spam
+                                                <WarningAmberIcon className="text-red-500" fontSize="small" />
+                                            ) : (
+                                                // Hiển thị Star như cũ khi không phải Spam
+                                                <div className="cursor-pointer transition-transform hover:scale-125">
+                                                    {isStarred ? (
+                                                        <StarIcon className="text-yellow-400" fontSize="small" />
+                                                    ) : (
+                                                        <StarIcon className="text-gray-200 group-hover:text-gray-400" fontSize="small" />
+                                                    )}
                                                 </div>
+                                            )}
+                                        </div>
 
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center justify-between">
-                                                        <h3
-                                                            className="truncate pr-2 text-sm md:text-base"
-                                                            style={{
-                                                                fontWeight: isRead ? 400 : 600,
-                                                                color: isRead ? '#6b7280' : '#1f2937'
-                                                            }}
-                                                        >
-                                                            {c.title}
-                                                        </h3>
-                                                        <div
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                const nextClass =
-                                                                    c.class === "star" ? "normal" : c.class === "spam" ? "normal" : "star";
-
-                                                                if (!token) {
-                                                                    console.warn("updateThreadStatus: missing auth token");
-                                                                    return;
-                                                                }
-                                                                if (!c.threadId) {
-                                                                    console.warn("updateThreadStatus: missing threadId — cannot update server for local-only conversation", c);
-                                                                    return;
-                                                                }
-
-                                                                try {
-                                                                    await updateThreadStatus(token, c.threadId, nextClass);
-                                                                    setConversations((prev) =>
-                                                                        prev.map((conv) =>
-                                                                            conv.threadId === c.threadId ? { ...conv, class: nextClass } : conv
-                                                                        )
-                                                                    );
-                                                                } catch (err) {
-                                                                    console.error("updateThreadStatus failed:", err.response?.data || err.message || err);
-                                                                }
-                                                            }}
-                                                            className="cursor-pointer ml-2"
-                                                        >
-                                                            {c.class === "star" ? (
-                                                                <StarIcon className="text-yellow-400" fontSize="small" />
-                                                            ) : c.class === "spam" ? (
-                                                                <WarningAmberIcon className="text-red-500" fontSize="small" />
-                                                            ) : (
-                                                                <StarIcon className="text-gray-300" fontSize="small" />
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <p
-                                                        className="text-sm mt-1 line-clamp-2 leading-relaxed"
-                                                        style={{
-                                                            color: isRead ? '#9ca3af' : '#4b5563'
-                                                        }}
-                                                    >
-                                                        {c.lastMessage}
-                                                    </p>
-                                                </div>
+                                        {/* 2. Nội dung Avatar & Content */}
+                                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                                            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold ${isRead ? 'bg-gray-400' : 'bg-gray-800'}`}>
+                                                {c.partnerEmail?.charAt(0).toUpperCase()}
                                             </div>
 
-                                            <div className="flex flex-col items-end ml-3 flex-shrink-0">
-                                                <div
-                                                    className="text-xs mb-1"
-                                                    style={{
-                                                        color: isRead ? '#d1d5db' : '#9ca3af'
-                                                    }}
-                                                >
-                                                    {formatTime(c.lastSentAt)}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <h3 className={`truncate text-sm ${isRead ? 'font-normal text-gray-500' : 'font-bold text-gray-900'}`}>
+                                                        {c.title || "(No title)"}
+                                                    </h3>
+                                                    {/* Tag nhỏ nếu là spam để người dùng dễ nhận biết */}
+                                                    {isSpam && (
+                                                        <span className="text-[10px] bg-red-50 text-red-500 px-1.5 py-0.5 rounded border border-red-100">
+                                                            Spam
+                                                        </span>
+                                                    )}
                                                 </div>
+                                                <p className="text-xs text-gray-500 truncate">{c.lastMessage}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* 3. Phía bên phải: Thời gian & Nút 3 chấm */}
+                                        <div className="flex items-center ml-4 space-x-2">
+                                            <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                                                {formatTime(c.lastSentAt)}
+                                            </span>
+
+                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={(e) => handleMenuOpen(e, c)}
+                                                >
+                                                    <MoreVertIcon fontSize="small" />
+                                                </IconButton>
                                             </div>
                                         </div>
                                     </div>
@@ -336,6 +346,36 @@ export default function Inbox({ token, currentUserId }) {
                     )}
                 </div>
             </div>
+
+            {/* Menu Dropdown cho Spam và Trash */}
+            <Menu
+                anchorEl={anchorEl}
+                open={open}
+                onClose={handleMenuClose}
+                // ... các props style ...
+            >
+                {/* Nút Spam/Not Spam */}
+                {selectedThread?.class === "spam" ? (
+                    <MenuItem onClick={() => handleUpdateStatus("normal")} className="gap-3 text-blue-600">
+                        <EmailIcon fontSize="small" />
+                        <span className="text-sm font-medium">Not spam</span>
+                    </MenuItem>
+                ) : (
+                    <MenuItem onClick={() => handleUpdateStatus("spam")} className="gap-3 text-orange-600">
+                        <ReportGmailerrorredIcon fontSize="small" />
+                        <span className="text-sm font-medium">Report Spam</span>
+                    </MenuItem>
+                )}
+
+                {/* Nút Thùng rác gọi handleUpdateStatus("trash") */}
+                <MenuItem
+                    onClick={() => handleUpdateStatus("trash")}
+                    className="gap-3 text-red-600"
+                >
+                    <DeleteOutlineIcon fontSize="small" />
+                    <span className="text-sm font-medium">Move to trash</span>
+                </MenuItem>
+            </Menu>
         </div>
     );
 }

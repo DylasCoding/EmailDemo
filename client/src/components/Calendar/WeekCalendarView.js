@@ -1,5 +1,5 @@
 // client/src/components/Calendar/WeekCalendarView.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import CreateEventModal from './CalendarEventForm';
 import EditEventModal from './EditEventModal';
@@ -11,7 +11,6 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
 
     console.log("Week calendar token:", token);
 
-    // colorMap is now an array where index corresponds to mockEvents.color numeric value
     const colorMap = [
         '34,197,94',   // 0 - green
         '168,85,247',  // 1 - purple-300
@@ -63,11 +62,28 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
 
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [nowMinutes, setNowMinutes] = useState(() => {
+        const now = new Date();
+        return now.getHours() * 60 + now.getMinutes();
+    });
+
+    useEffect(() => {
+        // cập nhật mỗi 30 giây để vạch di chuyển tương đối mượt
+        const interval = setInterval(() => {
+            const now = new Date();
+            setNowMinutes(now.getHours() * 60 + now.getMinutes());
+        }, 30000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     const handleEventClick = (event) => {
         setSelectedEvent(event);
         setIsEditModalOpen(true);
     };
+
+    // find index of today in weekDays (or -1 if not in this week)
+    const todayIndex = weekDays.findIndex(d => isToday(d));
 
     return (
         <div className="bg-white/80 backdrop-blur-xl rounded-xl shadow-lg border border-white/20 p-6">
@@ -125,6 +141,26 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
                             ))}
 
                             <div className="absolute top-16 left-0 right-0 bottom-0">
+                                {/*
+                                  Render current time line only if this column is today (todayIndex === dayIdx)
+                                  Each minute maps to 1px because each hour = 60px
+                                */}
+                                {todayIndex === dayIdx && (
+                                    <div
+                                        style={{
+                                            position: 'absolute',
+                                            top: `${nowMinutes}px`,
+                                            left: 0,
+                                            right: 0,
+                                            height: '2px',
+                                            background: 'linear-gradient(90deg, rgba(239,68,68,1), rgba(239,68,68,0.7))',
+                                            boxShadow: '0 1px 4px rgba(239,68,68,0.5)',
+                                            pointerEvents: 'none',
+                                            zIndex: 30,
+                                        }}
+                                    />
+                                )}
+
                                 {mockEvents
                                     .filter(event => {
                                         const eventDate = new Date(event.date);
@@ -136,7 +172,7 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
                                         return (
                                             <div
                                                 key={event.id}
-                                                onClick={() => handleEventClick(event)} // Bấm vào để mở modal
+                                                onClick={() => handleEventClick(event)}
                                                 className="absolute left-1 right-1 p-2 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                                                 style={{
                                                     ...style,
@@ -164,14 +200,14 @@ export default function WeekCalendarView({ currentDate, weekDays, mockEvents, on
                 onClose={() => setIsEditModalOpen(false)}
                 token={token}
                 event={selectedEvent}
-                onEventUpdated={onEventCreated} // Dùng chung hàm refresh data
+                onEventUpdated={onEventCreated}
             />
 
             <CreateEventModal
                 isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)}
                 token={token}
-                onEventCreated={onEventCreated} // để parent refresh nếu cần
+                onEventCreated={onEventCreated}
             />
         </div>
     );

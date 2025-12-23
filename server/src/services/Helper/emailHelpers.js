@@ -57,6 +57,16 @@ export async function sendExternalEmail(senderEmail, receiverEmail, subject, bod
         body,
     }, { transaction });
 
+    //handle spam detection
+    await handleSpamDetection(
+        body,
+        senderEmail,
+        receiverEmail,
+        thread.id,
+        receiver.id,
+        transaction
+    );
+
     // Log into ExternalEmailLog AFTER message exists, include trackingToken and explicit receiverId null
     await ExternalEmailLog.create({
         messageId: thread.id,

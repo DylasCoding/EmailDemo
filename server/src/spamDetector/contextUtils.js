@@ -3,43 +3,49 @@ import { User, MailThread, MailThreadStatus, MailMessage } from '../../models/in
 import { encrypt as encryptFn, decrypt } from '../utils/crypto.js';
 
 export async function checkSenderReputation(senderEmail, receiverEmail) {
-    // 1. Lấy thông tin cả 2 user
     const sender = await User.findOne({ where: { email: encryptFn(senderEmail) }});
-    console.log(sender.id);
     const receiver = await User.findOne({ where: { email: encryptFn(receiverEmail) }});
-    console.log(receiver.id);
 
-    if (!sender || !receiver) return 1;
+    if (!sender || !receiver) return 0.1;
 
-    // 2. Tổng số thread mà Sender đã gửi cho Receiver này
     const totalThreads = await MailThread.count({
+        where: { senderId: sender.id, receiverId: receiver.id }
+    });
+
+    if (totalThreads === 0) return 0.1;
+
+    // Đếm số thread mà Receiver thực sự có tương tác (phản hồi lại)
+    //Đây là chìa khóa để chặn bot spam liên tục
+    const interactedThreads = await MailThread.count({
         where: {
             senderId: sender.id,
             receiverId: receiver.id
-        }
-    });
-
-    if (totalThreads === 0) return 1;
-
-    // 3. Đếm số thread mà Receiver đã đánh dấu là spam
-    // Lưu ý: userId ở MailThreadStatus chính là id của Receiver
-    const spamThreads = await MailThreadStatus.count({
-        where: {
-            class: 'spam',
-            userId: receiver.id
         },
         include: [{
-            model: MailThread,
-            as: 'thread', // THỬ NGHIỆM: Nếu vẫn lỗi, hãy đổi thành 'thread'
-            where: {
-                senderId: sender.id,
-                receiverId: receiver.id
-            }
+            model: MailMessage,
+            as: 'messages',
+            where: { senderId: receiver.id }
         }]
     });
 
-    // 4. Tính tỉ lệ
-    return 1 - (spamThreads / totalThreads);
+    const spamThreads = await MailThreadStatus.count({
+        where: { class: 'spam', userId: receiver.id },
+        include: [{
+            model: MailThread,
+            as: 'thread',
+            where: { senderId: sender.id, receiverId: receiver.id }
+        }]
+    });
+
+    // Tính tỉ lệ tin tưởng dựa trên tương tác thực tế thay vì tổng số mail gửi đi
+    // Nếu gửi 100 mail mà không ai trả lời, tỉ lệ này sẽ tiến về 0
+    const interactionRatio = interactedThreads / totalThreads;
+    const spamRatio = spamThreads / totalThreads;
+
+    let reputation = (interactionRatio * 2) - (spamRatio * 5);
+
+    // Giới hạn trong khoảng [0, 1]
+    return Math.max(0, Math.min(1, reputation));
 }
 
 export async function analyzeContext(senderEmail, receiverEmail) {
@@ -49,19 +55,21 @@ export async function analyzeContext(senderEmail, receiverEmail) {
     if (!sender || !receiver) return 0;
 
     const thread = await MailThread.findOne({
-        where: {
-            senderId: sender.id,
-            receiverId: receiver.id
-        }
+        where: { senderId: sender.id, receiverId: receiver.id }
     });
 
     if (!thread) return 0;
 
-    const replyCount = await MailMessage.count({
-        where: { threadId: thread.id }
+    // CHỈ đếm những tin nhắn mà Receiver (người nhận) phản hồi lại
+    const replyFromReceiver = await MailMessage.count({
+        where: {
+            threadId: thread.id,
+            senderId: receiver.id // Quan trọng: Phải là người nhận phản hồi
+        }
     });
 
-    // Reply score có giới hạn
-    return Math.min(3, Math.log2(replyCount + 1));
-}
+    if (replyFromReceiver === 0) return -1; // Phạt điểm nếu gửi mà không ai thèm trả lời
 
+    // Điểm thưởng tăng rất chậm theo số lần phản hồi
+    return Math.min(2, Math.log10(replyFromReceiver + 1) * 2);
+}
