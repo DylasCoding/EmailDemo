@@ -45,3 +45,4 @@ client/.vite/
 
 # ⚠️ Nếu có backend uploads
 server/uploads/
+ai-service-PhoBert/output/
